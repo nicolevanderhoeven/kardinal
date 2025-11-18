@@ -1,0 +1,29 @@
+version: '3.8'
+
+# For using a registry image instead, see docker-compose.registry.yml
+# Or replace 'build: .' with 'image: YOUR_USERNAME/kanban-board:latest'
+
+services:
+  kanban-board:
+    build: .
+    # Alternative: uncomment to use a registry image instead of building
+    # image: YOUR_USERNAME/kanban-board:latest
+    container_name: kanban-board
+    restart: unless-stopped
+    volumes:
+      - /srv/kardinal/kardinal_public:/srv/kardinal/kardinal_public:ro
+    environment:
+      - KANBAN_MARKDOWN_FILE=/srv/kardinal/kardinal_public/Grafana Labs Kanban.md
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kanban.rule=Host(`kardinal.nvdh.dev`)"
+      - "traefik.http.routers.kanban.entrypoints=websecure"
+      - "traefik.http.routers.kanban.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kanban.loadbalancer.server.port=5000"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+
