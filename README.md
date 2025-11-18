@@ -142,7 +142,7 @@ Both `docker-compose.yml` (build on server) and `docker-compose.registry.yml` (u
 - Environment variable for the file path
 - Automatic restarts
 
-**Note**: Make sure the Traefik network exists. If your Traefik network has a different name, update the `networks` section in the docker-compose file.
+**Note**: The docker-compose files are configured to use the `traefik` network. If the network doesn't exist, create it with: `docker network create traefik`. If your Traefik uses a different network name, update the `networks` section in the docker-compose file.
 
 ### CI/CD Integration
 
@@ -283,11 +283,44 @@ sudo systemctl status kardinal
 
 ## Traefik Configuration
 
+### Setting Up Traefik
+
+If Traefik isn't running yet, you can use the provided `traefik-docker-compose.yml` as a reference:
+
+1. **Create Traefik directory and copy the compose file:**
+```bash
+mkdir -p /srv/traefik
+# Copy traefik-docker-compose.yml to /srv/traefik/docker-compose.yml
+# Or download it:
+curl -o /srv/traefik/docker-compose.yml https://raw.githubusercontent.com/nicolevanderhoeven/kardinal/main/traefik-docker-compose.yml
+```
+
+2. **Create required directories:**
+```bash
+mkdir -p /srv/traefik/letsencrypt
+mkdir -p /srv/traefik/dynamic
+chmod 600 /srv/traefik/letsencrypt  # Secure the ACME storage
+```
+
+3. **Create the traefik network:**
+```bash
+docker network create traefik
+```
+
+4. **Start Traefik:**
+```bash
+cd /srv/traefik
+docker-compose up -d
+```
+
+**Note:** Update the email in the compose file (`nicole@nicolevanderhoeven.com`) to your actual email for Let's Encrypt notifications.
+
 ### Docker Deployment (Recommended)
 
 If using Docker with `docker-compose.yml`, Traefik labels are already configured. Just ensure:
 - Traefik is running and can access the `traefik` network
-- The network name in `docker-compose.yml` matches your Traefik network
+- The `traefik` network exists (create it with `docker network create traefik` if needed)
+- Traefik has Docker provider enabled (see `traefik-docker-compose.yml` for reference)
 
 The labels in `docker-compose.yml` handle routing automatically.
 
@@ -350,7 +383,7 @@ Or if the file is in a Syncthing directory, ensure the service user can read it.
   - Docker: Check that the container is on the Traefik network and labels are correct. View logs: `docker logs kardinal`
   - Manual: Check Traefik logs and ensure the service is running on port 5000
 - **Container won't start**: Check Docker logs: `docker logs kardinal` or `docker-compose logs`
-- **Network issues**: Ensure the Traefik network exists: `docker network ls` and update `docker-compose.yml` if needed
+- **Network issues**: Ensure the `traefik` network exists: `docker network ls | grep traefik`. If it doesn't exist, create it: `docker network create traefik`. Then update your Traefik container to use this network.
 
 ## License
 

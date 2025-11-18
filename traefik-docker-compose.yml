@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Dashboard (optional, remove if you don't want it exposed)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/traefik/letsencrypt:/letsencrypt
+      - /srv/traefik/dynamic:/etc/traefik/dynamic:ro
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=nicole@nicolevanderhoeven.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+
