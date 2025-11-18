@@ -1,4 +1,5 @@
-# Kanban Markdown Renderer
+# Kardinal
+Kanban Markdown Renderer
 
 A lightweight Flask application that reads an Obsidian Kanban-formatted Markdown file and renders it as a read-only Kanban board.
 
