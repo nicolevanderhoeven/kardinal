@@ -1,14 +1,14 @@
 version: '3.8'
 
 # For using a registry image instead, see docker-compose.registry.yml
-# Or replace 'build: .' with 'image: YOUR_USERNAME/kanban-board:latest'
+# Or replace 'build: .' with 'image: YOUR_USERNAME/kardinal:latest'
 
 services:
-  kanban-board:
+  kardinal:
     build: .
     # Alternative: uncomment to use a registry image instead of building
-    # image: YOUR_USERNAME/kanban-board:latest
-    container_name: kanban-board
+    # image: YOUR_USERNAME/kardinal:latest
+    container_name: kardinal
     restart: unless-stopped
     volumes:
       - /srv/kardinal/kardinal_public:/srv/kardinal/kardinal_public:ro

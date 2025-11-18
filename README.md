@@ -50,20 +50,20 @@ This approach builds the image once (locally or via CI/CD) and pushes it to a re
 
 1. **Build the image locally** (or in CI/CD):
 ```bash
-docker build -t YOUR_USERNAME/kanban-board:latest .
-# Or tag with a version: docker build -t YOUR_USERNAME/kanban-board:v1.0.0 .
+docker build -t YOUR_USERNAME/kardinal:latest .
+# Or tag with a version: docker build -t YOUR_USERNAME/kardinal:v1.0.0 .
 ```
 
 2. **Push to Docker Hub**:
 ```bash
 docker login
-docker push YOUR_USERNAME/kanban-board:latest
+docker push YOUR_USERNAME/kardinal:latest
 ```
 
 Or use GitHub Container Registry:
 ```bash
-docker build -t ghcr.io/YOUR_USERNAME/kanban-board:latest .
-docker push ghcr.io/YOUR_USERNAME/kanban-board:latest
+docker build -t ghcr.io/YOUR_USERNAME/kardinal:latest .
+docker push ghcr.io/YOUR_USERNAME/kardinal:latest
 ```
 
 #### Deploying on Server
@@ -88,8 +88,8 @@ docker-compose -f docker-compose.registry.yml up -d
 
 1. **Build and push new image** (locally or via CI/CD):
 ```bash
-docker build -t YOUR_USERNAME/kanban-board:latest .
-docker push YOUR_USERNAME/kanban-board:latest
+docker build -t YOUR_USERNAME/kardinal:latest .
+docker push YOUR_USERNAME/kardinal:latest
 ```
 
 2. **On server, pull and restart**:
@@ -169,7 +169,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           push: true
-          tags: YOUR_USERNAME/kanban-board:latest
+          tags: YOUR_USERNAME/kardinal:latest
 ```
 
 ### Building the Image Manually
@@ -178,11 +178,11 @@ If you prefer to build and run without docker-compose:
 
 ```bash
 # Build the image
-docker build -t kanban-board .
+docker build -t kardinal .
 
 # Run the container
 docker run -d \
-  --name kanban-board \
+  --name kardinal \
   --restart unless-stopped \
   -v /srv/kardinal/kardinal_public:/srv/kardinal/kardinal_public:ro \
   -e KANBAN_MARKDOWN_FILE="/srv/kardinal/kardinal_public/Grafana Labs Kanban.md" \
@@ -192,7 +192,7 @@ docker run -d \
   --label "traefik.http.routers.kanban.entrypoints=websecure" \
   --label "traefik.http.routers.kanban.tls.certresolver=letsencrypt" \
   --label "traefik.http.services.kanban.loadbalancer.server.port=5000" \
-  kanban-board
+  kardinal
 ```
 
 ## Manual Installation (Alternative)
@@ -247,7 +247,7 @@ gunicorn -w 2 -b 127.0.0.1:5000 app:app
 
 ### Systemd Service
 
-Create a systemd service file at `/etc/systemd/system/kanban-board.service`:
+Create a systemd service file at `/etc/systemd/system/kardinal.service`:
 
 ```ini
 [Unit]
@@ -272,13 +272,13 @@ Replace `/path/to/kardinal` with your actual deployment path.
 Enable and start the service:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable kanban-board
-sudo systemctl start kanban-board
+sudo systemctl enable kardinal
+sudo systemctl start kardinal
 ```
 
 Check status:
 ```bash
-sudo systemctl status kanban-board
+sudo systemctl status kardinal
 ```
 
 ## Traefik Configuration
@@ -347,9 +347,9 @@ Or if the file is in a Syncthing directory, ensure the service user can read it.
   - Manual: Check that the Markdown file path is correct and the application user has read permissions
 - **No columns displayed**: Verify the Markdown file uses `##` for column headers and `- [ ]` for cards
 - **Traefik not routing**: 
-  - Docker: Check that the container is on the Traefik network and labels are correct. View logs: `docker logs kanban-board`
+  - Docker: Check that the container is on the Traefik network and labels are correct. View logs: `docker logs kardinal`
   - Manual: Check Traefik logs and ensure the service is running on port 5000
-- **Container won't start**: Check Docker logs: `docker logs kanban-board` or `docker-compose logs`
+- **Container won't start**: Check Docker logs: `docker logs kardinal` or `docker-compose logs`
 - **Network issues**: Ensure the Traefik network exists: `docker network ls` and update `docker-compose.yml` if needed
 
 ## License

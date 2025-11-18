@@ -2,12 +2,12 @@ version: '3.8'
 
 # Alternative docker-compose file for using a pre-built image from a registry
 # Usage: docker-compose -f docker-compose.registry.yml up -d
-# Update the image name below to match your registry (e.g., username/kanban-board:latest)
+# Update the image name below to match your registry (e.g., username/kardinal:latest)
 
 services:
-  kanban-board:
-    image: YOUR_USERNAME/kanban-board:latest  # Update this with your Docker Hub username
-    container_name: kanban-board
+  kardinal:
+    image: nvanderhoeven/kardinal:latest
+    container_name: kardinal
     restart: unless-stopped
     volumes:
       - /srv/kardinal/kardinal_public:/srv/kardinal/kardinal_public:ro
