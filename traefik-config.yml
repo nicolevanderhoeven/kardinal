@@ -1,0 +1,27 @@
+# Traefik Configuration Example for Kanban Board
+# This is an example configuration. Adjust based on your Traefik setup.
+
+# If using Docker with Traefik labels, add these to your docker-compose.yml or container:
+# labels:
+#   - "traefik.enable=true"
+#   - "traefik.http.routers.kanban.rule=Host(`kardinal.nvdh.dev`)"
+#   - "traefik.http.routers.kanban.entrypoints=websecure"
+#   - "traefik.http.routers.kanban.tls.certresolver=letsencrypt"
+#   - "traefik.http.services.kanban.loadbalancer.server.port=5000"
+
+# If using file-based configuration (traefik.yml), add this to your http.routers section:
+# http:
+#   routers:
+#     kanban:
+#       rule: "Host(`kardinal.nvdh.dev`)"
+#       entryPoints:
+#         - websecure
+#       service: kanban
+#       tls:
+#         certResolver: letsencrypt
+#   services:
+#     kanban:
+#       loadBalancer:
+#         servers:
+#           - url: "http://127.0.0.1:5000"
+
