@@ -112,6 +112,10 @@ def parse_kanban_markdown(file_path):
             if task_match:
                 is_completed = task_match.group(1) == 'x'
                 card_text = task_match.group(2)
+                # Remove leading list markers and spaces (e.g., "- ", "* ", "+ ", numbered lists)
+                card_text = re.sub(r'^[-*+]\s+', '', card_text)  # Remove unordered list markers
+                card_text = re.sub(r'^\d+\.\s+', '', card_text)  # Remove ordered list markers
+                card_text = card_text.lstrip()  # Remove any remaining leading whitespace
                 # Render markdown for the card text
                 rendered_html = render_card_markdown(card_text)
                 current_cards.append({
