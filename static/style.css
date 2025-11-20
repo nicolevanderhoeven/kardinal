@@ -119,6 +119,65 @@ header h1 {
     color: #333;
 }
 
+/* Markdown styling within cards */
+.card-text p {
+    margin: 0 0 0.5em 0;
+}
+
+.card-text p:last-child {
+    margin-bottom: 0;
+}
+
+.card-text a {
+    color: #ff6b9d;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease;
+}
+
+.card-text a:hover {
+    border-bottom-color: #ff6b9d;
+}
+
+.card-text code {
+    background: #e9ecef;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.card-text pre {
+    background: #e9ecef;
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+}
+
+.card-text pre code {
+    background: none;
+    padding: 0;
+}
+
+.card-text strong {
+    font-weight: 600;
+}
+
+.card-text em {
+    font-style: italic;
+}
+
+.card-text ul,
+.card-text ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+}
+
+.card-text li {
+    margin: 0.25em 0;
+}
+
 .empty-column {
     text-align: center;
     color: #999;

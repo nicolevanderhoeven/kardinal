@@ -22,7 +22,7 @@
                             {% for card in column.cards %}
                             <div class="kanban-card {% if card.completed %}completed{% endif %}">
                                 <span class="card-checkbox">{% if card.completed %}✓{% else %}○{% endif %}</span>
-                                <span class="card-text">{{ card.text }}</span>
+                                <div class="card-text">{{ card.html|safe }}</div>
                             </div>
                             {% endfor %}
                         {% else %}
