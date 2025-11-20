@@ -22,7 +22,7 @@ MARKDOWN_FILE = os.getenv('KANBAN_MARKDOWN_FILE', '/srv/kardinal/kardinal_public
 def check_note_exists(note_name):
     """
     Check if a note exists on notes.nicolevanderhoeven.com.
-    Returns True if the note exists (HTTP 200), False otherwise.
+    Returns True if the note exists (HTTP 200), False otherwise (including 404).
     """
     try:
         # URL encode the note name (spaces become +, special chars like & become %26)
@@ -30,8 +30,15 @@ def check_note_exists(note_name):
         url = f'https://notes.nicolevanderhoeven.com/system/cards/{url_name}'
         
         # Make a GET request with a short timeout to avoid blocking
-        response = requests.get(url, timeout=2)
-        return response.status_code == 200
+        # Allow redirects but check the final status code
+        response = requests.get(url, timeout=2, allow_redirects=True)
+        # Only return True for 200 (success)
+        # Explicitly treat 404 and any other status code as non-existent
+        if response.status_code == 200:
+            return True
+        else:
+            # 404 or any other status code means note doesn't exist
+            return False
     except Exception:
         # If request fails for any reason, assume note doesn't exist
         return False
