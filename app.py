@@ -96,6 +96,7 @@ def parse_kanban_markdown(file_path):
     lines = content.split('\n')
     current_column = None
     current_cards = []
+    stopped_at_archive = False
 
     for line in lines:
         # Check for column header (## Header)
@@ -111,6 +112,7 @@ def parse_kanban_markdown(file_path):
                         'cards': current_cards
                     })
                 # Stop parsing - ignore Archive and everything after it
+                stopped_at_archive = True
                 break
             
             # Save previous column if exists
@@ -140,8 +142,8 @@ def parse_kanban_markdown(file_path):
                     'completed': is_completed
                 })
 
-    # Don't forget the last column (only if we didn't break early)
-    if current_column is not None and current_column.strip().lower() != 'archive':
+    # Don't forget the last column (only if we didn't break early at Archive)
+    if not stopped_at_archive and current_column is not None and current_column.strip().lower() != 'archive':
         columns.append({
             'name': current_column,
             'cards': current_cards
