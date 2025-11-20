@@ -24,6 +24,10 @@ def render_card_markdown(text):
     Falls back to plain text if rendering fails.
     """
     try:
+        # Parse Wikilinks [[text]] and convert to italic markdown
+        # Replace [[text]] with *text* (italic)
+        text = re.sub(r'\[\[([^\]]+)\]\]', r'*\1*', text)
+        
         # Convert markdown to HTML
         html = markdown.markdown(
             text,
