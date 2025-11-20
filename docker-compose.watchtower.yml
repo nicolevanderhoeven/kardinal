@@ -14,14 +14,14 @@ services:
     environment:
       # Only update containers with the watchtower.enable label
       - WATCHTOWER_LABEL_ENABLE=true
-      # Check for updates every 6 hours (21600 seconds)
+      # Check for updates every 5 minutes (300 seconds)
       # Alternative: Use --schedule "0 0 2 * * *" for daily at 2 AM
-      - WATCHTOWER_POLL_INTERVAL=21600
+      - WATCHTOWER_POLL_INTERVAL=300
       # Clean up old images after updating
       - WATCHTOWER_CLEANUP=true
       # Run in non-root mode (more secure)
       - WATCHTOWER_NO_STARTUP_MESSAGE=false
-    command: --label-enable --interval 21600 --cleanup
+    command: --label-enable --interval 300 --cleanup
     # Optional: Add notifications (uncomment and configure if desired)
     # - WATCHTOWER_NOTIFICATIONS=email
     # - WATCHTOWER_NOTIFICATION_EMAIL_FROM=your_email@example.com

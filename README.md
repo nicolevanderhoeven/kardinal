@@ -187,15 +187,16 @@ docker logs watchtower
 
 The Watchtower configuration (`docker-compose.watchtower.yml`) is set to:
 - **Monitor only containers with the label** `com.centurylinklabs.watchtower.enable=true` (Kardinal has this label)
-- **Check for updates every 6 hours** (21600 seconds)
+- **Check for updates every 5 minutes** (300 seconds)
 - **Automatically clean up old images** after updating
 
 #### Customizing the Update Schedule
 
 To change how often Watchtower checks for updates, edit `docker-compose.watchtower.yml`:
 
-- **Every 30 minutes**: Change `--interval 21600` to `--interval 1800`
-- **Daily at 2 AM**: Replace `--interval 21600` with `--schedule "0 0 2 * * *"`
+- **Every 30 minutes**: Change `--interval 300` to `--interval 1800`
+- **Every 6 hours**: Change `--interval 300` to `--interval 21600`
+- **Daily at 2 AM**: Replace `--interval 300` with `--schedule "0 0 2 * * *"`
 
 #### Optional: Email Notifications
 
