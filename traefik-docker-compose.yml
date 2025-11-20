@@ -16,9 +16,10 @@ services:
     command:
       - --api.dashboard=true
       - --api.insecure=true
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=traefik
+      # Docker provider disabled due to API version incompatibility
+      # - --providers.docker=true
+      # - --providers.docker.exposedbydefault=false
+      # - --providers.docker.network=traefik
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
       - --entrypoints.web.address=:80
