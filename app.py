@@ -10,11 +10,31 @@ from flask import Flask, render_template
 from markupsafe import Markup
 import markdown
 import bleach
+import requests
+from urllib.parse import quote_plus
 
 app = Flask(__name__)
 
 # Path to the Markdown file (configurable via environment variable)
 MARKDOWN_FILE = os.getenv('KANBAN_MARKDOWN_FILE', '/srv/kardinal/kardinal_public/Grafana Labs Kanban.md')
+
+
+def check_note_exists(note_name):
+    """
+    Check if a note exists on notes.nicolevanderhoeven.com.
+    Returns True if the note exists (HTTP 200), False otherwise.
+    """
+    try:
+        # URL encode the note name (spaces become +, special chars like & become %26)
+        url_name = quote_plus(note_name)
+        url = f'https://notes.nicolevanderhoeven.com/system/cards/{url_name}'
+        
+        # Make a GET request with a short timeout to avoid blocking
+        response = requests.get(url, timeout=2)
+        return response.status_code == 200
+    except Exception:
+        # If request fails for any reason, assume note doesn't exist
+        return False
 
 
 def render_card_markdown(text):
@@ -24,9 +44,21 @@ def render_card_markdown(text):
     Falls back to plain text if rendering fails.
     """
     try:
-        # Parse Wikilinks [[text]] and convert to italic markdown
-        # Replace [[text]] with *text* (italic)
-        text = re.sub(r'\[\[([^\]]+)\]\]', r'*\1*', text)
+        # Parse Wikilinks [[text]] and check if they exist on notes site
+        def process_wikilink(match):
+            note_name = match.group(1)
+            if check_note_exists(note_name):
+                # URL encode the note name (spaces become +, special chars like & become %26)
+                url_name = quote_plus(note_name)
+                url = f'https://notes.nicolevanderhoeven.com/system/cards/{url_name}'
+                # Return Markdown link format
+                return f'[{note_name}]({url})'
+            else:
+                # Note doesn't exist, convert to italic
+                return f'*{note_name}*'
+        
+        # Replace [[text]] with either a Markdown link or italic text
+        text = re.sub(r'\[\[([^\]]+)\]\]', process_wikilink, text)
         
         # Convert markdown to HTML
         html = markdown.markdown(
