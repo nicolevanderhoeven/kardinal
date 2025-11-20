@@ -23,7 +23,12 @@ log "Pulling latest image..."
 if docker-compose -f "$(basename "$COMPOSE_FILE")" pull; then
     log "Image pull completed"
     
-    # Check if container needs to be updated
+    # Stop and remove old container if it exists (handles ContainerConfig errors)
+    log "Stopping and removing old container..."
+    docker-compose -f "$(basename "$COMPOSE_FILE")" down 2>/dev/null || true
+    
+    # Start the container with the new image
+    log "Starting container with new image..."
     if docker-compose -f "$(basename "$COMPOSE_FILE")" up -d; then
         log "Container updated successfully"
     else
