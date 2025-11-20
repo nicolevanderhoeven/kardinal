@@ -91,6 +91,12 @@ curl -o /srv/traefik/dynamic/kardinal.yml https://raw.githubusercontent.com/nico
 
 #### Updating the Application
 
+**Option A: Automatic Updates with Watchtower (Recommended)**
+
+Watchtower automatically monitors and updates your containers. See the "Automatic Updates with Watchtower" section below for setup instructions.
+
+**Option B: Manual Updates**
+
 1. **Build and push new image** (locally or via CI/CD):
 ```bash
 docker build -t YOUR_USERNAME/kardinal:latest .
@@ -156,6 +162,44 @@ Both `docker-compose.yml` (build on server) and `docker-compose.registry.yml` (u
 - The docker-compose files are configured to use the `traefik` network. If the network doesn't exist, create it with: `docker network create traefik`.
 - Traefik routing is configured via file-based configuration (see "File-based Configuration" section above), not Docker labels.
 - After starting the kardinal container, make sure to set up the Traefik routing configuration file.
+
+### Automatic Updates with Watchtower
+
+Watchtower is an open-source tool that automatically monitors and updates your Docker containers. When combined with CI/CD (like GitHub Actions), you get fully automated deployments:
+
+1. **Push code** → GitHub Actions builds and pushes new image
+2. **Watchtower detects** the new image and automatically updates the container
+
+#### Setting Up Watchtower
+
+1. **On your server, start Watchtower**:
+```bash
+cd /path/to/kardinal
+docker-compose -f docker-compose.watchtower.yml up -d
+```
+
+2. **Verify it's running**:
+```bash
+docker logs watchtower
+```
+
+#### Configuration
+
+The Watchtower configuration (`docker-compose.watchtower.yml`) is set to:
+- **Monitor only containers with the label** `com.centurylinklabs.watchtower.enable=true` (Kardinal has this label)
+- **Check for updates every 6 hours** (21600 seconds)
+- **Automatically clean up old images** after updating
+
+#### Customizing the Update Schedule
+
+To change how often Watchtower checks for updates, edit `docker-compose.watchtower.yml`:
+
+- **Every 30 minutes**: Change `--interval 21600` to `--interval 1800`
+- **Daily at 2 AM**: Replace `--interval 21600` with `--schedule "0 0 2 * * *"`
+
+#### Optional: Email Notifications
+
+To receive email notifications when updates occur, uncomment and configure the notification environment variables in `docker-compose.watchtower.yml`.
 
 ### CI/CD Integration
 

@@ -19,6 +19,8 @@ services:
       - "traefik.http.routers.kanban.entrypoints=websecure"
       - "traefik.http.routers.kanban.tls.certresolver=letsencrypt"
       - "traefik.http.services.kanban.loadbalancer.server.port=5000"
+      # Enable Watchtower to automatically update this container
+      - "com.centurylinklabs.watchtower.enable=true"
     networks:
       - traefik
 
