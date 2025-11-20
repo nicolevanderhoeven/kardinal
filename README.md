@@ -202,6 +202,32 @@ To change how often Watchtower checks for updates, edit `docker-compose.watchtow
 
 To receive email notifications when updates occur, uncomment and configure the notification environment variables in `docker-compose.watchtower.yml`.
 
+#### Alternative: Cron-based Auto-updates
+
+If Watchtower is incompatible with your Docker version, you can use a cron job instead:
+
+1. **Download the update script**:
+```bash
+curl -o /srv/kardinal/update-kardinal.sh https://raw.githubusercontent.com/nicolevanderhoeven/kardinal/main/update-kardinal.sh
+chmod +x /srv/kardinal/update-kardinal.sh
+```
+
+2. **Set up a cron job** (checks every 5 minutes):
+```bash
+# Edit crontab
+crontab -e
+
+# Add this line (adjust the path if needed):
+*/5 * * * * /srv/kardinal/update-kardinal.sh
+```
+
+3. **Check logs**:
+```bash
+tail -f /var/log/kardinal-update.log
+```
+
+This approach pulls the latest image and restarts the container if a new version is available, similar to Watchtower but without the Docker API compatibility issues.
+
 ### CI/CD Integration
 
 You can automate building and pushing images using GitHub Actions, GitLab CI, or similar. Example GitHub Actions workflow:
@@ -444,19 +470,21 @@ Or if the file is in a Syncthing directory, ensure the service user can read it.
 ## Troubleshooting
 
 - **Watchtower Docker API version errors**:
-  - If you see errors like "client version 1.25 is too old. Minimum supported API version is 1.44", the Watchtower container needs to be updated:
+  - If you see errors like "client version 1.25 is too old. Minimum supported API version is 1.44", Watchtower is incompatible with your Docker version:
   ```bash
-  # Pull the latest Watchtower image (ensure you get a fresh version)
-  docker pull containrrr/watchtower:latest --no-cache
-  
-  # Stop and remove the old container
+  # Stop and remove Watchtower (it may be in a restart loop)
   docker stop watchtower
   docker rm watchtower
   
-  # Start Watchtower with the new image
+  # Option 1: Try updating Watchtower (may not work if Docker is too new)
+  docker rmi containrrr/watchtower:latest
+  docker pull containrrr/watchtower:latest
   docker-compose -f docker-compose.watchtower.yml up -d
+  
+  # Option 2: Use cron-based auto-updates instead (recommended if Watchtower fails)
+  # See "Alternative: Cron-based Auto-updates" section above
   ```
-  - The compose file uses `latest`. If you still get API version errors, try checking [Watchtower releases](https://github.com/containrrr/watchtower/releases) for a specific version tag that supports Docker API 1.44+, or check available tags on [Docker Hub](https://hub.docker.com/r/containrrr/watchtower/tags).
+  - If Watchtower continues to fail, use the cron-based update script instead (see "Alternative: Cron-based Auto-updates" section above).
 
 - **File not found**: 
   - Docker: Check that the volume mount path is correct and the file exists on the host
