@@ -20,48 +20,56 @@ def render_card_markdown(text):
     """
     Render markdown text to HTML and sanitize it for safe display.
     Allows common markdown features like links, bold, italic, etc.
+    Falls back to plain text if rendering fails.
     """
-    # Convert markdown to HTML
-    html = markdown.markdown(
-        text,
-        extensions=['extra', 'nl2br', 'sane_lists']
-    )
-    
-    # Sanitize HTML - allow safe tags and attributes
-    allowed_tags = [
-        'p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre',
-        'a', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
-    ]
-    allowed_attributes = {
-        'a': ['href', 'title', 'target', 'rel']
-    }
-    
-    # Sanitize HTML
-    cleaned = bleach.clean(
-        html,
-        tags=allowed_tags,
-        attributes=allowed_attributes,
-        protocols=['http', 'https', 'mailto']
-    )
-    
-    # Add rel="noopener noreferrer" and target="_blank" to external links for security
-    # Handle links that may or may not already have attributes
-    def add_link_security(match):
-        link_content = match.group(1)
-        href_match = re.search(r'href=["\']([^"\']+)["\']', link_content)
-        if href_match:
-            url = href_match.group(1)
-            # Only add security attributes to external links (http/https)
-            if url.startswith(('http://', 'https://')):
-                # Remove existing rel and target if present
-                link_content = re.sub(r'\s+rel=["\'][^"\']*["\']', '', link_content)
-                link_content = re.sub(r'\s+target=["\'][^"\']*["\']', '', link_content)
-                return f'<a {link_content} rel="noopener noreferrer" target="_blank">'
-        return match.group(0)
-    
-    cleaned = re.sub(r'<a\s+([^>]+)>', add_link_security, cleaned)
-    
-    return Markup(cleaned)
+    try:
+        # Convert markdown to HTML
+        html = markdown.markdown(
+            text,
+            extensions=['extra', 'nl2br']
+        )
+        
+        # Sanitize HTML - allow safe tags and attributes
+        allowed_tags = [
+            'p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre',
+            'a', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
+        ]
+        allowed_attributes = {
+            'a': ['href', 'title', 'target', 'rel']
+        }
+        
+        # Sanitize HTML
+        cleaned = bleach.clean(
+            html,
+            tags=allowed_tags,
+            attributes=allowed_attributes,
+            protocols=['http', 'https', 'mailto']
+        )
+        
+        # Add rel="noopener noreferrer" and target="_blank" to external links for security
+        # Handle links that may or may not already have attributes
+        def add_link_security(match):
+            link_content = match.group(1)
+            href_match = re.search(r'href=["\']([^"\']+)["\']', link_content)
+            if href_match:
+                url = href_match.group(1)
+                # Only add security attributes to external links (http/https)
+                if url.startswith(('http://', 'https://')):
+                    # Remove existing rel and target if present
+                    link_content = re.sub(r'\s+rel=["\'][^"\']*["\']', '', link_content)
+                    link_content = re.sub(r'\s+target=["\'][^"\']*["\']', '', link_content)
+                    return f'<a {link_content} rel="noopener noreferrer" target="_blank">'
+            return match.group(0)
+        
+        cleaned = re.sub(r'<a\s+([^>]+)>', add_link_security, cleaned)
+        
+        return Markup(cleaned)
+    except Exception as e:
+        # Log error and fall back to plain text
+        app.logger.error(f"Error rendering markdown: {e}")
+        # Escape HTML to prevent XSS, but return as plain text
+        from html import escape
+        return Markup(escape(text))
 
 
 def parse_kanban_markdown(file_path):
