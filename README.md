@@ -91,11 +91,11 @@ curl -o /srv/traefik/dynamic/kardinal.yml https://raw.githubusercontent.com/nico
 
 #### Updating the Application
 
-**Option A: Automatic Updates with Watchtower (Recommended)**
+**Automatic Updates (Recommended)**
 
-Watchtower automatically monitors and updates your containers. See the "Automatic Updates with Watchtower" section below for setup instructions.
+Set up a cron job to automatically check for and apply updates. See the "Automatic Updates with Cron" section below for setup instructions.
 
-**Option B: Manual Updates**
+**Manual Updates**
 
 1. **Build and push new image** (locally or via CI/CD):
 ```bash
@@ -163,48 +163,14 @@ Both `docker-compose.yml` (build on server) and `docker-compose.registry.yml` (u
 - Traefik routing is configured via file-based configuration (see "File-based Configuration" section above), not Docker labels.
 - After starting the kardinal container, make sure to set up the Traefik routing configuration file.
 
-### Automatic Updates with Watchtower
+### Automatic Updates with Cron
 
-Watchtower is an open-source tool that automatically monitors and updates your Docker containers. When combined with CI/CD (like GitHub Actions), you get fully automated deployments:
+A cron job automatically checks for and applies container updates. When combined with CI/CD (like GitHub Actions), you get fully automated deployments:
 
 1. **Push code** → GitHub Actions builds and pushes new image
-2. **Watchtower detects** the new image and automatically updates the container
+2. **Cron job detects** the new image and automatically updates the container
 
-#### Setting Up Watchtower
-
-1. **On your server, start Watchtower**:
-```bash
-cd /path/to/kardinal
-docker-compose -f docker-compose.watchtower.yml up -d
-```
-
-2. **Verify it's running**:
-```bash
-docker logs watchtower
-```
-
-#### Configuration
-
-The Watchtower configuration (`docker-compose.watchtower.yml`) is set to:
-- **Monitor only containers with the label** `com.centurylinklabs.watchtower.enable=true` (Kardinal has this label)
-- **Check for updates every 5 minutes** (300 seconds)
-- **Automatically clean up old images** after updating
-
-#### Customizing the Update Schedule
-
-To change how often Watchtower checks for updates, edit `docker-compose.watchtower.yml`:
-
-- **Every 30 minutes**: Change `--interval 300` to `--interval 1800`
-- **Every 6 hours**: Change `--interval 300` to `--interval 21600`
-- **Daily at 2 AM**: Replace `--interval 300` with `--schedule "0 0 2 * * *"`
-
-#### Optional: Email Notifications
-
-To receive email notifications when updates occur, uncomment and configure the notification environment variables in `docker-compose.watchtower.yml`.
-
-#### Alternative: Cron-based Auto-updates
-
-If Watchtower is incompatible with your Docker version, you can use a cron job instead:
+#### Setting Up Automatic Updates
 
 1. **Download the update script**:
 ```bash
@@ -226,7 +192,7 @@ crontab -e
 tail -f /var/log/kardinal-update.log
 ```
 
-This approach pulls the latest image and restarts the container if a new version is available, similar to Watchtower but without the Docker API compatibility issues.
+This approach pulls the latest image and restarts the container if a new version is available. The script logs all activity to `/var/log/kardinal-update.log` for monitoring and troubleshooting.
 
 ### CI/CD Integration
 
@@ -468,23 +434,6 @@ sudo chown www-data:www-data "/srv/kardinal/kardinal_public/Grafana Labs Kanban.
 Or if the file is in a Syncthing directory, ensure the service user can read it.
 
 ## Troubleshooting
-
-- **Watchtower Docker API version errors**:
-  - If you see errors like "client version 1.25 is too old. Minimum supported API version is 1.44", Watchtower is incompatible with your Docker version:
-  ```bash
-  # Stop and remove Watchtower (it may be in a restart loop)
-  docker stop watchtower
-  docker rm watchtower
-  
-  # Option 1: Try updating Watchtower (may not work if Docker is too new)
-  docker rmi containrrr/watchtower:latest
-  docker pull containrrr/watchtower:latest
-  docker-compose -f docker-compose.watchtower.yml up -d
-  
-  # Option 2: Use cron-based auto-updates instead (recommended if Watchtower fails)
-  # See "Alternative: Cron-based Auto-updates" section above
-  ```
-  - If Watchtower continues to fail, use the cron-based update script instead (see "Alternative: Cron-based Auto-updates" section above).
 
 - **File not found**: 
   - Docker: Check that the volume mount path is correct and the file exists on the host
