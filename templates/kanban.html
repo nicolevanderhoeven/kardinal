@@ -21,7 +21,6 @@
                         {% if column.cards %}
                             {% for card in column.cards %}
                             <div class="kanban-card {% if card.completed %}completed{% endif %}">
-                                <span class="card-checkbox">{% if card.completed %}✓{% else %}○{% endif %}</span>
                                 <div class="card-text">{{ card.html|safe }}</div>
                             </div>
                             {% endfor %}
