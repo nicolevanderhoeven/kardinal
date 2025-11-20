@@ -33,9 +33,15 @@ header h1 {
 
 .kanban-board {
     display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-bottom: 20px;
+}
+
+.kanban-row {
+    display: flex;
     gap: 20px;
     overflow-x: auto;
-    padding-bottom: 20px;
     min-height: 500px;
 }
 
@@ -64,6 +70,24 @@ header h1 {
     z-index: 10;
 }
 
+.done-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.2s ease;
+}
+
+.done-header:hover {
+    background: linear-gradient(135deg, #e55a8d 0%, #b03d59 100%);
+}
+
+.toggle-icon {
+    font-size: 0.9rem;
+    transition: transform 0.3s ease;
+}
+
 .column-content {
     padding: 15px;
     overflow-y: auto;
@@ -71,6 +95,27 @@ header h1 {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.done-column {
+    width: 100%;
+    max-height: none;
+}
+
+.done-column.collapsed .done-content {
+    display: none;
+}
+
+.done-column.collapsed {
+    max-height: fit-content;
+}
+
+.done-column.collapsed .done-header {
+    border-radius: 8px;
+}
+
+.done-column:not(.collapsed) {
+    max-height: calc(100vh - 300px);
 }
 
 .kanban-card {
@@ -201,13 +246,17 @@ header h1 {
 
 /* Responsive Design */
 @media (max-width: 768px) {
-    .kanban-board {
+    .kanban-row {
         flex-direction: column;
     }
 
     .kanban-column {
         min-width: 100%;
         max-height: none;
+    }
+
+    .done-column {
+        max-height: none !important;
     }
 
     header h1 {
