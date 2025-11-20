@@ -19,17 +19,18 @@ app = Flask(__name__)
 MARKDOWN_FILE = os.getenv('KANBAN_MARKDOWN_FILE', '/srv/kardinal/kardinal_public/Grafana Labs Kanban.md')
 
 
-def check_note_exists(note_name):
+def find_note_path(note_name):
     """
-    Check if a note exists on notes.nicolevanderhoeven.com using the search API.
-    Returns True if the note exists (found in search results), False otherwise.
+    Find the path of a note on notes.nicolevanderhoeven.com using the search API.
+    Returns the full path (without .md extension) if the note exists, None otherwise.
+    Searches in all directories, not just system/cards/.
     """
     try:
         import os
         
-        # Use the Obsidian search API to check if the note exists
+        # Use the Obsidian search API to find the note
         # The search API returns file paths, and we check if any result
-        # in system/cards/ matches the note name exactly
+        # matches the note name exactly (in any directory)
         payload = {
             'id': '186a0d1b800fa85e50d49cb464898e4c',
             'query': [note_name]
@@ -42,23 +43,24 @@ def check_note_exists(note_name):
         )
         
         if response.status_code != 200:
-            return False
+            return None
         
         data = response.json()
         results = data.get('results', [])
         
-        # Check if any result in system/cards/ matches the note name exactly
+        # Check if any result matches the note name exactly (in any directory)
         for result in results:
-            if 'system/cards/' in result:
-                # Extract filename without extension
-                filename = os.path.splitext(os.path.basename(result))[0]
-                if filename == note_name:
-                    return True
+            # Extract filename without extension
+            filename = os.path.splitext(os.path.basename(result))[0]
+            if filename == note_name:
+                # Return the full path without .md extension
+                # This will be used to construct the URL
+                return os.path.splitext(result)[0]
         
-        return False
+        return None
     except Exception:
         # If request fails for any reason, assume note doesn't exist
-        return False
+        return None
 
 
 def render_card_markdown(text):
@@ -71,10 +73,14 @@ def render_card_markdown(text):
         # Parse Wikilinks [[text]] and check if they exist on notes site
         def process_wikilink(match):
             note_name = match.group(1)
-            if check_note_exists(note_name):
-                # URL encode the note name (spaces become +, special chars like & become %26)
-                url_name = quote_plus(note_name)
-                url = f'https://notes.nicolevanderhoeven.com/system/cards/{url_name}'
+            note_path = find_note_path(note_name)
+            if note_path:
+                # URL encode each path segment (spaces become +, special chars like & become %26)
+                # Split the path and encode each segment separately
+                path_segments = note_path.split('/')
+                encoded_segments = [quote_plus(segment) for segment in path_segments]
+                encoded_path = '/'.join(encoded_segments)
+                url = f'https://notes.nicolevanderhoeven.com/{encoded_path}'
                 # Return Markdown link format
                 return f'[{note_name}]({url})'
             else:
