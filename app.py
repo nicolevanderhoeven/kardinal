@@ -101,6 +101,18 @@ def parse_kanban_markdown(file_path):
         # Check for column header (## Header)
         column_match = re.match(r'^##\s+(.+)$', line.strip())
         if column_match:
+            # Stop parsing if we encounter Archive column
+            column_name = column_match.group(1)
+            if column_name.strip().lower() == 'archive':
+                # Save previous column if exists before stopping
+                if current_column is not None:
+                    columns.append({
+                        'name': current_column,
+                        'cards': current_cards
+                    })
+                # Stop parsing - ignore Archive and everything after it
+                break
+            
             # Save previous column if exists
             if current_column is not None:
                 columns.append({
@@ -108,7 +120,7 @@ def parse_kanban_markdown(file_path):
                     'cards': current_cards
                 })
             # Start new column
-            current_column = column_match.group(1)
+            current_column = column_name
             current_cards = []
         # Check for task item (- [ ] or - [x])
         elif current_column is not None:
@@ -128,8 +140,8 @@ def parse_kanban_markdown(file_path):
                     'completed': is_completed
                 })
 
-    # Don't forget the last column
-    if current_column is not None:
+    # Don't forget the last column (only if we didn't break early)
+    if current_column is not None and current_column.strip().lower() != 'archive':
         columns.append({
             'name': current_column,
             'cards': current_cards
