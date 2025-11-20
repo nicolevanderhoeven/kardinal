@@ -49,10 +49,11 @@ def find_note_path(note_name):
         results = data.get('results', [])
         
         # Check if any result matches the note name exactly (in any directory)
+        # Use case-insensitive comparison to handle variations in casing
         for result in results:
             # Extract filename without extension
             filename = os.path.splitext(os.path.basename(result))[0]
-            if filename == note_name:
+            if filename.lower() == note_name.lower():
                 # Return the full path without .md extension
                 # This will be used to construct the URL
                 return os.path.splitext(result)[0]
