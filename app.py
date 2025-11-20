@@ -6,7 +6,8 @@ Reads an Obsidian Kanban-formatted Markdown file and renders it as a read-only K
 
 import os
 import re
-from flask import Flask, render_template, Markup
+from flask import Flask, render_template
+from markupsafe import Markup
 import markdown
 import bleach
 
