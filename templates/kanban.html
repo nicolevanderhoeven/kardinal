@@ -15,7 +15,7 @@
         <div class="kanban-board">
             {% if columns %}
                 {% for column in columns %}
-                <div class="kanban-column column-{{ column.name.lower().replace(' ', '-') }}">
+                <div class="kanban-column">
                     <h2 class="column-header">{{ column.name }}</h2>
                     <div class="column-content">
                         {% if column.cards %}
