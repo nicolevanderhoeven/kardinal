@@ -25,11 +25,12 @@ if docker-compose -f "$(basename "$COMPOSE_FILE")" pull; then
     
     # Stop and remove old container if it exists (handles ContainerConfig errors)
     log "Stopping and removing old container..."
-    docker-compose -f "$(basename "$COMPOSE_FILE")" down 2>/dev/null || true
+    docker-compose -f "$(basename "$COMPOSE_FILE")" stop 2>/dev/null || true
+    docker-compose -f "$(basename "$COMPOSE_FILE")" rm -f 2>/dev/null || true
     
-    # Start the container with the new image
+    # Start the container with the new image (force recreate to avoid ContainerConfig errors)
     log "Starting container with new image..."
-    if docker-compose -f "$(basename "$COMPOSE_FILE")" up -d; then
+    if docker-compose -f "$(basename "$COMPOSE_FILE")" up -d --force-recreate; then
         log "Container updated successfully"
     else
         log "ERROR: Failed to update container"
