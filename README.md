@@ -84,6 +84,11 @@ cd /path/to/kardinal
 docker-compose -f docker-compose.registry.yml up -d
 ```
 
+4. **Set up Traefik routing** (see "File-based Configuration" section below):
+```bash
+curl -o /srv/traefik/dynamic/kardinal.yml https://raw.githubusercontent.com/nicolevanderhoeven/kardinal/main/kardinal-traefik-config.yml
+```
+
 #### Updating the Application
 
 1. **Build and push new image** (locally or via CI/CD):
@@ -116,7 +121,12 @@ cd /path/to/kardinal
 docker-compose up -d --build
 ```
 
-3. The application will be available at `kardinal.nvdh.dev` (assuming Traefik is configured correctly)
+3. **Set up Traefik routing** (see "File-based Configuration" section below):
+```bash
+curl -o /srv/traefik/dynamic/kardinal.yml https://raw.githubusercontent.com/nicolevanderhoeven/kardinal/main/kardinal-traefik-config.yml
+```
+
+4. The application will be available at `kardinal.nvdh.dev` (Traefik will automatically detect the config file)
 
 #### Updating the Application
 
@@ -137,12 +147,15 @@ docker-compose up -d --build
 ### Docker Compose Configuration
 
 Both `docker-compose.yml` (build on server) and `docker-compose.registry.yml` (use registry image) include:
-- Automatic Traefik routing with SSL certificates
 - Volume mount for the Markdown file (read-only)
 - Environment variable for the file path
 - Automatic restarts
+- Network configuration for Traefik
 
-**Note**: The docker-compose files are configured to use the `traefik` network. If the network doesn't exist, create it with: `docker network create traefik`. If your Traefik uses a different network name, update the `networks` section in the docker-compose file.
+**Note**: 
+- The docker-compose files are configured to use the `traefik` network. If the network doesn't exist, create it with: `docker network create traefik`.
+- Traefik routing is configured via file-based configuration (see "File-based Configuration" section above), not Docker labels.
+- After starting the kardinal container, make sure to set up the Traefik routing configuration file.
 
 ### CI/CD Integration
 
@@ -315,20 +328,11 @@ docker-compose up -d
 
 **Note:** Update the email in the compose file (`nicole@nicolevanderhoeven.com`) to your actual email for Let's Encrypt notifications.
 
-**Important:** If you encounter Docker API version errors with Traefik's Docker provider, you can use file-based configuration instead. See the "File-based Configuration" section below.
+**Important:** The Traefik configuration uses file-based routing (not Docker provider) due to Docker API version compatibility. This is the recommended approach for this setup.
 
-### Docker Deployment (Recommended)
+### File-based Configuration (Current Setup)
 
-If using Docker with `docker-compose.yml`, Traefik labels are already configured. Just ensure:
-- Traefik is running and can access the `traefik` network
-- The `traefik` network exists (create it with `docker network create traefik` if needed)
-- Traefik has Docker provider enabled (see `traefik-docker-compose.yml` for reference)
-
-The labels in `docker-compose.yml` handle routing automatically.
-
-### File-based Configuration (Workaround for Docker API Issues)
-
-If Traefik's Docker provider isn't working due to API version mismatches, use file-based configuration:
+The current setup uses file-based configuration for Traefik routing. After deploying kardinal, you need to create the routing configuration:
 
 1. **Copy the configuration file to Traefik's dynamic config directory:**
 ```bash
@@ -363,6 +367,12 @@ http:
 docker logs traefik | grep -i kardinal
 ```
 
+### Docker Provider (Not Currently Used)
+
+The Docker provider is disabled in the Traefik configuration due to Docker API version compatibility issues. The docker-compose files include Traefik labels for reference, but they won't be automatically detected. If you need to use Docker provider in the future, you'll need to:
+- Update Traefik to a version with compatible Docker client
+- Re-enable the Docker provider in `traefik-docker-compose.yml`
+
 ## File Permissions
 
 ### Docker Deployment
@@ -393,10 +403,13 @@ Or if the file is in a Syncthing directory, ensure the service user can read it.
   - Manual: Check that the Markdown file path is correct and the application user has read permissions
 - **No columns displayed**: Verify the Markdown file uses `##` for column headers and `- [ ]` for cards
 - **Traefik not routing**: 
-  - Docker: Check that the container is on the Traefik network and labels are correct. View logs: `docker logs kardinal`
-  - Manual: Check Traefik logs and ensure the service is running on port 5000
+  - Check that the file-based config exists: `cat /srv/traefik/dynamic/kardinal.yml`
+  - Verify the kardinal container is on the traefik network: `docker network inspect traefik | grep kardinal`
+  - Check Traefik logs: `docker logs traefik | grep -i kardinal`
+  - Verify the container is running: `docker logs kardinal`
 - **Container won't start**: Check Docker logs: `docker logs kardinal` or `docker-compose logs`
-- **Network issues**: Ensure the `traefik` network exists: `docker network ls | grep traefik`. If it doesn't exist, create it: `docker network create traefik`. Then update your Traefik container to use this network.
+- **Network issues**: Ensure the `traefik` network exists: `docker network ls | grep traefik`. If it doesn't exist, create it: `docker network create traefik`. Both Traefik and kardinal containers must be on this network.
+- **Docker API version errors**: These are expected and harmless - the Docker provider is disabled. Traefik uses file-based configuration instead.
 
 ## License
 
