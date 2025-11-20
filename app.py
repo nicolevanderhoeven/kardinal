@@ -21,24 +21,41 @@ MARKDOWN_FILE = os.getenv('KANBAN_MARKDOWN_FILE', '/srv/kardinal/kardinal_public
 
 def check_note_exists(note_name):
     """
-    Check if a note exists on notes.nicolevanderhoeven.com.
-    Returns True if the note exists (HTTP 200), False otherwise (including 404).
+    Check if a note exists on notes.nicolevanderhoeven.com using the search API.
+    Returns True if the note exists (found in search results), False otherwise.
     """
     try:
-        # URL encode the note name (spaces become +, special chars like & become %26)
-        url_name = quote_plus(note_name)
-        url = f'https://notes.nicolevanderhoeven.com/system/cards/{url_name}'
+        import os
         
-        # Make a GET request with a short timeout to avoid blocking
-        # Allow redirects but check the final status code
-        response = requests.get(url, timeout=2, allow_redirects=True)
-        # Only return True for 200 (success)
-        # Explicitly treat 404 and any other status code as non-existent
-        if response.status_code == 200:
-            return True
-        else:
-            # 404 or any other status code means note doesn't exist
+        # Use the Obsidian search API to check if the note exists
+        # The search API returns file paths, and we check if any result
+        # in system/cards/ matches the note name exactly
+        payload = {
+            'id': '186a0d1b800fa85e50d49cb464898e4c',
+            'query': [note_name]
+        }
+        
+        response = requests.post(
+            'https://publish-01.obsidian.md/search',
+            json=payload,
+            timeout=2
+        )
+        
+        if response.status_code != 200:
             return False
+        
+        data = response.json()
+        results = data.get('results', [])
+        
+        # Check if any result in system/cards/ matches the note name exactly
+        for result in results:
+            if 'system/cards/' in result:
+                # Extract filename without extension
+                filename = os.path.splitext(os.path.basename(result))[0]
+                if filename == note_name:
+                    return True
+        
+        return False
     except Exception:
         # If request fails for any reason, assume note doesn't exist
         return False
