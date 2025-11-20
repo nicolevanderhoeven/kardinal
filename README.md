@@ -446,8 +446,8 @@ Or if the file is in a Syncthing directory, ensure the service user can read it.
 - **Watchtower Docker API version errors**:
   - If you see errors like "client version 1.25 is too old. Minimum supported API version is 1.44", the Watchtower container needs to be updated:
   ```bash
-  # Pull the specific Watchtower version (v1.7.9 or newer supports Docker API 1.44+)
-  docker pull containrrr/watchtower:v1.7.9
+  # Pull the latest Watchtower image (ensure you get a fresh version)
+  docker pull containrrr/watchtower:latest --no-cache
   
   # Stop and remove the old container
   docker stop watchtower
@@ -456,7 +456,7 @@ Or if the file is in a Syncthing directory, ensure the service user can read it.
   # Start Watchtower with the new image
   docker-compose -f docker-compose.watchtower.yml up -d
   ```
-  - The compose file uses `v1.7.9` which supports newer Docker APIs. If issues persist, check [Watchtower releases](https://github.com/containrrr/watchtower/releases) for the latest version tag.
+  - The compose file uses `latest`. If you still get API version errors, try checking [Watchtower releases](https://github.com/containrrr/watchtower/releases) for a specific version tag that supports Docker API 1.44+, or check available tags on [Docker Hub](https://hub.docker.com/r/containrrr/watchtower/tags).
 
 - **File not found**: 
   - Docker: Check that the volume mount path is correct and the file exists on the host
