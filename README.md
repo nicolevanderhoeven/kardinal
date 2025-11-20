@@ -443,6 +443,18 @@ Or if the file is in a Syncthing directory, ensure the service user can read it.
 
 ## Troubleshooting
 
+- **Watchtower Docker API version errors**:
+  - If you see errors like "client version 1.25 is too old. Minimum supported API version is 1.44", the Watchtower container needs to be updated:
+  ```bash
+  # Pull the latest Watchtower image
+  docker pull containrrr/watchtower:latest
+  
+  # Restart Watchtower with the new image
+  docker-compose -f docker-compose.watchtower.yml down
+  docker-compose -f docker-compose.watchtower.yml up -d
+  ```
+  - The compose file uses `latest` which should support newer Docker APIs. If issues persist, check [Watchtower releases](https://github.com/containrrr/watchtower/releases) for a specific version tag.
+
 - **File not found**: 
   - Docker: Check that the volume mount path is correct and the file exists on the host
   - Manual: Check that the Markdown file path is correct and the application user has read permissions
