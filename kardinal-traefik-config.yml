@@ -1,0 +1,19 @@
+# Traefik dynamic configuration for kardinal
+# Place this file in /srv/traefik/dynamic/kardinal.yml
+
+http:
+  routers:
+    kardinal:
+      rule: "Host(`kardinal.nvdh.dev`)"
+      entryPoints:
+        - websecure
+      service: kardinal
+      tls:
+        certResolver: letsencrypt
+  
+  services:
+    kardinal:
+      loadBalancer:
+        servers:
+          - url: "http://kardinal:5000"
+

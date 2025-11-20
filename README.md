@@ -315,6 +315,8 @@ docker-compose up -d
 
 **Note:** Update the email in the compose file (`nicole@nicolevanderhoeven.com`) to your actual email for Let's Encrypt notifications.
 
+**Important:** If you encounter Docker API version errors with Traefik's Docker provider, you can use file-based configuration instead. See the "File-based Configuration" section below.
+
 ### Docker Deployment (Recommended)
 
 If using Docker with `docker-compose.yml`, Traefik labels are already configured. Just ensure:
@@ -324,30 +326,41 @@ If using Docker with `docker-compose.yml`, Traefik labels are already configured
 
 The labels in `docker-compose.yml` handle routing automatically.
 
-### File-based Configuration (Non-Docker)
+### File-based Configuration (Workaround for Docker API Issues)
 
-Add to your Traefik configuration file (typically `traefik.yml` or `/etc/traefik/traefik.yml`):
+If Traefik's Docker provider isn't working due to API version mismatches, use file-based configuration:
+
+1. **Copy the configuration file to Traefik's dynamic config directory:**
+```bash
+# Copy kardinal-traefik-config.yml to /srv/traefik/dynamic/kardinal.yml
+curl -o /srv/traefik/dynamic/kardinal.yml https://raw.githubusercontent.com/nicolevanderhoeven/kardinal/main/kardinal-traefik-config.yml
+```
+
+Or create `/srv/traefik/dynamic/kardinal.yml` manually with:
 
 ```yaml
 http:
   routers:
-    kanban:
+    kardinal:
       rule: "Host(`kardinal.nvdh.dev`)"
       entryPoints:
         - websecure
-      service: kanban
+      service: kardinal
       tls:
         certResolver: letsencrypt
+  
   services:
-    kanban:
+    kardinal:
       loadBalancer:
         servers:
-          - url: "http://127.0.0.1:5000"
+          - url: "http://kardinal:5000"
 ```
 
-After updating Traefik configuration, reload Traefik:
+**Note:** This assumes the kardinal container is on the `traefik` network and accessible by its container name. If using a different network or setup, adjust the URL accordingly.
+
+2. **Traefik will automatically pick up the file** (since `--providers.file.watch=true` is set). No restart needed, but you can verify:
 ```bash
-sudo systemctl reload traefik
+docker logs traefik | grep -i kardinal
 ```
 
 ## File Permissions
