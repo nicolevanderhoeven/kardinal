@@ -78,6 +78,8 @@ def render_card_markdown(text):
             if note_path:
                 # URL encode each path segment (spaces become +, special chars like & become %26)
                 # Split the path and encode each segment separately
+                # This works for both root-level notes (e.g., "Spice Runner") and 
+                # notes in subdirectories (e.g., "system/cards/Note Name")
                 path_segments = note_path.split('/')
                 encoded_segments = [quote_plus(segment) for segment in path_segments]
                 encoded_path = '/'.join(encoded_segments)
