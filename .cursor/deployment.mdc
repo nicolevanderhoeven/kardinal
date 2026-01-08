@@ -28,4 +28,3 @@
   - Parallel processing via ThreadPoolExecutor
   - Shared request cache per page render
 - Page load time should be ~1-2 seconds instead of ~15 seconds
-
