@@ -12,18 +12,27 @@ import markdown
 import bleach
 import requests
 from urllib.parse import quote_plus
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 app = Flask(__name__)
 
 # Path to the Markdown file (configurable via environment variable)
 MARKDOWN_FILE = os.getenv('KANBAN_MARKDOWN_FILE', '/srv/kardinal/kardinal_public/Grafana Labs Kanban.md')
 
+# Thread pool for parallel note lookups
+note_lookup_executor = ThreadPoolExecutor(max_workers=10)
 
+
+@lru_cache(maxsize=1000)
 def find_note_path(note_name):
     """
     Find the path of a note on notes.nicolevanderhoeven.com using the search API.
     Returns the full path (without .md extension) if the note exists, None otherwise.
     Searches in all directories, not just system/cards/.
+    
+    Results are cached to avoid duplicate API calls for the same note.
     """
     try:
         import os
@@ -39,7 +48,7 @@ def find_note_path(note_name):
         response = requests.post(
             'https://publish-01.obsidian.md/search',
             json=payload,
-            timeout=2
+            timeout=1  # Reduced timeout from 2 to 1 second
         )
         
         if response.status_code != 200:
@@ -64,17 +73,52 @@ def find_note_path(note_name):
         return None
 
 
-def render_card_markdown(text):
+def render_card_markdown(text, note_cache=None):
     """
     Render markdown text to HTML and sanitize it for safe display.
     Allows common markdown features like links, bold, italic, etc.
     Falls back to plain text if rendering fails.
+    
+    Args:
+        text: The markdown text to render
+        note_cache: Optional dict to cache note lookups (for batch processing)
     """
     try:
-        # Parse Wikilinks [[text]] and check if they exist on notes site
+        # Find all wikilinks first
+        wikilinks = re.findall(r'\[\[([^\]]+)\]\]', text)
+        
+        # If we have a cache, use it; otherwise create a local one
+        if note_cache is None:
+            note_cache = {}
+        
+        # Batch lookup all unique wikilinks in parallel
+        unique_notes = list(set(wikilinks))
+        note_paths = {}
+        
+        # Submit all lookups to thread pool
+        future_to_note = {
+            note_lookup_executor.submit(find_note_path, note): note 
+            for note in unique_notes if note not in note_cache
+        }
+        
+        # Wait for all lookups to complete
+        for future in as_completed(future_to_note):
+            note_name = future_to_note[future]
+            try:
+                note_path = future.result()
+                note_paths[note_name] = note_path
+                if note_cache is not None:
+                    note_cache[note_name] = note_path
+            except Exception:
+                note_paths[note_name] = None
+        
+        # Merge with cache
+        note_paths.update({note: note_cache[note] for note in unique_notes if note in note_cache})
+        
+        # Parse Wikilinks [[text]] and replace with links or italic
         def process_wikilink(match):
             note_name = match.group(1)
-            note_path = find_note_path(note_name)
+            note_path = note_paths.get(note_name)
             if note_path:
                 # URL encode each path segment (spaces become +, special chars like & become %26)
                 # Split the path and encode each segment separately
@@ -162,6 +206,9 @@ def parse_kanban_markdown(file_path):
     current_column = None
     current_cards = []
     stopped_at_archive = False
+    
+    # Shared cache for note lookups across all cards
+    note_cache = {}
 
     for line in lines:
         # Check for column header (## Header)
@@ -199,8 +246,8 @@ def parse_kanban_markdown(file_path):
                 card_text = re.sub(r'^[-*+]\s+', '', card_text)  # Remove unordered list markers
                 card_text = re.sub(r'^\d+\.\s+', '', card_text)  # Remove ordered list markers
                 card_text = card_text.lstrip()  # Remove any remaining leading whitespace
-                # Render markdown for the card text
-                rendered_html = render_card_markdown(card_text)
+                # Render markdown for the card text with shared cache
+                rendered_html = render_card_markdown(card_text, note_cache=note_cache)
                 current_cards.append({
                     'text': card_text,
                     'html': rendered_html,
