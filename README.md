@@ -196,27 +196,28 @@ This approach pulls the latest image and restarts the container if a new version
 
 ### CI/CD Integration
 
-A GitHub Actions workflow is included (`.github/workflows/docker-build-push.yml`) that automatically builds and pushes the Docker image to Docker Hub on every push to the `main` branch.
+A GitHub Actions workflow is already configured (`.github/workflows/docker-build.yml`) that automatically builds and pushes the Docker image to Docker Hub on every push to the `main` branch.
 
 #### Setting Up GitHub Actions
 
-1. **Add Docker Hub secrets to your GitHub repository:**
+1. **Add Docker Hub secret to your GitHub repository:**
    - Go to your repository on GitHub
    - Navigate to Settings → Secrets and variables → Actions
-   - Add the following secrets:
-     - `DOCKER_USERNAME`: Your Docker Hub username (e.g., `nvanderhoeven`)
+   - Add the following secret:
      - `DOCKER_PASSWORD`: Your Docker Hub access token (not your password - create one at https://hub.docker.com/settings/security)
+   - Note: The username (`nvanderhoeven`) is already configured in the workflow
 
 2. **Push to trigger the workflow:**
-   - The workflow will automatically run on every push to `main`
-   - You can also manually trigger it from the Actions tab in GitHub
+   - The workflow will automatically run on every push to `main` and on pull requests
+   - Pull requests will build but not push (for testing)
+   - Pushes to `main` will build and push to Docker Hub
 
 3. **The workflow will:**
    - Build the Docker image
    - Push it to `nvanderhoeven/kardinal:latest` on Docker Hub
    - Your server's cron job will automatically pick it up within 5 minutes
 
-**Note:** The workflow uses Docker Hub caching to speed up builds. Make sure your Docker Hub account has access to create repositories (or create the `nvanderhoeven/kardinal` repository manually if needed).
+**Note:** The workflow uses GitHub Actions cache for faster builds and handles both pushes and pull requests appropriately.
 
 ### Building the Image Manually
 
