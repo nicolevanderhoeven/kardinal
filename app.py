@@ -6,7 +6,7 @@ Reads an Obsidian Kanban-formatted Markdown file and renders it as a read-only K
 
 import os
 import re
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 from markupsafe import Markup
 import markdown
 import bleach
@@ -15,6 +15,7 @@ from urllib.parse import quote_plus
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -269,6 +270,35 @@ def kanban_board():
     """Render the Kanban board from the Markdown file."""
     columns = parse_kanban_markdown(MARKDOWN_FILE)
     return render_template('kanban.html', columns=columns)
+
+
+@app.route('/health')
+def health():
+    """
+    Health check endpoint that returns deployment status and version info.
+    Useful for verifying that new deployments have been applied.
+    """
+    try:
+        # Get the modification time of the app file as a proxy for deployment time
+        app_file_path = os.path.abspath(__file__)
+        file_mtime = os.path.getmtime(app_file_path)
+        deployed_at = datetime.fromtimestamp(file_mtime).isoformat()
+        
+        # Check if the markdown file is accessible
+        markdown_accessible = os.path.exists(MARKDOWN_FILE)
+        
+        return jsonify({
+            'status': 'ok',
+            'deployed_at': deployed_at,
+            'markdown_file': MARKDOWN_FILE,
+            'markdown_accessible': markdown_accessible,
+            'version': '1.0.0'  # Update this when you make significant changes
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 
 if __name__ == '__main__':
