@@ -196,31 +196,27 @@ This approach pulls the latest image and restarts the container if a new version
 
 ### CI/CD Integration
 
-You can automate building and pushing images using GitHub Actions, GitLab CI, or similar. Example GitHub Actions workflow:
+A GitHub Actions workflow is included (`.github/workflows/docker-build-push.yml`) that automatically builds and pushes the Docker image to Docker Hub on every push to the `main` branch.
 
-```yaml
-name: Build and Push Docker Image
+#### Setting Up GitHub Actions
 
-on:
-  push:
-    branches: [ main ]
+1. **Add Docker Hub secrets to your GitHub repository:**
+   - Go to your repository on GitHub
+   - Navigate to Settings → Secrets and variables → Actions
+   - Add the following secrets:
+     - `DOCKER_USERNAME`: Your Docker Hub username (e.g., `nvanderhoeven`)
+     - `DOCKER_PASSWORD`: Your Docker Hub access token (not your password - create one at https://hub.docker.com/settings/security)
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Build and push
-        uses: docker/build-push-action@v4
-        with:
-          push: true
-          tags: YOUR_USERNAME/kardinal:latest
-```
+2. **Push to trigger the workflow:**
+   - The workflow will automatically run on every push to `main`
+   - You can also manually trigger it from the Actions tab in GitHub
+
+3. **The workflow will:**
+   - Build the Docker image
+   - Push it to `nvanderhoeven/kardinal:latest` on Docker Hub
+   - Your server's cron job will automatically pick it up within 5 minutes
+
+**Note:** The workflow uses Docker Hub caching to speed up builds. Make sure your Docker Hub account has access to create repositories (or create the `nvanderhoeven/kardinal` repository manually if needed).
 
 ### Building the Image Manually
 
