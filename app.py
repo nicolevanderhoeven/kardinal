@@ -49,7 +49,7 @@ def find_note_path(note_name):
         response = requests.post(
             'https://publish-01.obsidian.md/search',
             json=payload,
-            timeout=1  # Reduced timeout from 2 to 1 second
+            timeout=0.5  # Reduced timeout to 0.5 seconds for faster failure
         )
         
         if response.status_code != 200:
@@ -202,15 +202,12 @@ def parse_kanban_markdown(file_path):
         app.logger.error(f"Error reading markdown file: {e}")
         return []
 
-    columns = []
+    # First pass: collect all cards grouped by column (without processing wikilinks)
+    columns_data = {}  # column_name -> list of cards
     lines = content.split('\n')
     current_column = None
-    current_cards = []
     stopped_at_archive = False
     
-    # Shared cache for note lookups across all cards
-    note_cache = {}
-
     for line in lines:
         # Check for column header (## Header)
         column_match = re.match(r'^##\s+(.+)$', line.strip())
@@ -218,48 +215,65 @@ def parse_kanban_markdown(file_path):
             # Stop parsing if we encounter Archive column
             column_name = column_match.group(1)
             if column_name.strip().lower() == 'archive':
-                # Save previous column if exists before stopping
-                if current_column is not None:
-                    columns.append({
-                        'name': current_column,
-                        'cards': current_cards
-                    })
-                # Stop parsing - ignore Archive and everything after it
                 stopped_at_archive = True
                 break
-            
-            # Save previous column if exists
-            if current_column is not None:
-                columns.append({
-                    'name': current_column,
-                    'cards': current_cards
-                })
-            # Start new column
             current_column = column_name
-            current_cards = []
+            if current_column not in columns_data:
+                columns_data[current_column] = []
         # Check for task item (- [ ] or - [x])
         elif current_column is not None:
             task_match = re.match(r'^-\s+\[([ x])\]\s+(.+)$', line.strip())
             if task_match:
                 is_completed = task_match.group(1) == 'x'
                 card_text = task_match.group(2)
-                # Remove leading list markers and spaces (e.g., "- ", "* ", "+ ", numbered lists)
-                card_text = re.sub(r'^[-*+]\s+', '', card_text)  # Remove unordered list markers
-                card_text = re.sub(r'^\d+\.\s+', '', card_text)  # Remove ordered list markers
-                card_text = card_text.lstrip()  # Remove any remaining leading whitespace
-                # Render markdown for the card text with shared cache
-                rendered_html = render_card_markdown(card_text, note_cache=note_cache)
-                current_cards.append({
+                # Remove leading list markers and spaces
+                card_text = re.sub(r'^[-*+]\s+', '', card_text)
+                card_text = re.sub(r'^\d+\.\s+', '', card_text)
+                card_text = card_text.lstrip()
+                columns_data[current_column].append({
                     'text': card_text,
-                    'html': rendered_html,
                     'completed': is_completed
                 })
-
-    # Don't forget the last column (only if we didn't break early at Archive)
-    if not stopped_at_archive and current_column is not None and current_column.strip().lower() != 'archive':
+    
+    # Second pass: collect ALL wikilinks from ALL cards and resolve them in one batch
+    all_wikilinks = set()
+    for column_cards in columns_data.values():
+        for card in column_cards:
+            wikilinks = re.findall(r'\[\[([^\]]+)\]\]', card['text'])
+            all_wikilinks.update(wikilinks)
+    
+    # Resolve all unique wikilinks in parallel (this is the key optimization)
+    note_cache = {}
+    if all_wikilinks:
+        unique_notes = list(all_wikilinks)
+        future_to_note = {
+            note_lookup_executor.submit(find_note_path, note): note 
+            for note in unique_notes
+        }
+        
+        # Wait for all lookups to complete
+        for future in as_completed(future_to_note):
+            note_name = future_to_note[future]
+            try:
+                note_path = future.result()
+                note_cache[note_name] = note_path
+            except Exception:
+                note_cache[note_name] = None
+    
+    # Third pass: render all cards with pre-resolved wikilinks and build columns
+    columns = []
+    for column_name, cards in columns_data.items():
+        rendered_cards = []
+        for card in cards:
+            rendered_html = render_card_markdown(card['text'], note_cache=note_cache)
+            rendered_cards.append({
+                'text': card['text'],
+                'html': rendered_html,
+                'completed': card['completed']
+            })
         columns.append({
-            'name': current_column,
-            'cards': current_cards
+            'name': column_name,
+            'cards': rendered_cards
         })
 
     return columns
