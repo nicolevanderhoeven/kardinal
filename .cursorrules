@@ -1,0 +1,31 @@
+# Kardinal Project Rules
+
+## Deployment
+
+- **GitHub Actions is already configured** (`.github/workflows/docker-build.yml`)
+- When the user makes changes, remind them that they only need to:
+  1. Commit and push to GitHub
+  2. GitHub Actions will automatically build and push the Docker image
+  3. The server's cron job will automatically pull and restart within 5 minutes
+- No manual Docker build/push steps are needed unless testing locally
+- The workflow uses GitHub Actions cache and handles both pushes and PRs
+
+## Health Endpoint
+
+- A `/health` endpoint exists at `https://kardinal.nvdh.dev/health`
+- Returns JSON with:
+  - `status`: "ok" if healthy
+  - `deployed_at`: timestamp when the container was deployed (useful for verifying updates)
+  - `markdown_file`: path to the markdown file
+  - `markdown_accessible`: whether the file exists
+  - `version`: current version string
+- Use this endpoint to verify deployments without logging into the server
+
+## Performance
+
+- Wikilink lookups are optimized with:
+  - LRU caching (1000 entries)
+  - Parallel processing via ThreadPoolExecutor
+  - Shared request cache per page render
+- Page load time should be ~1-2 seconds instead of ~15 seconds
+
