@@ -298,8 +298,13 @@ def health():
         file_mtime = os.path.getmtime(app_file_path)
         deployed_at = datetime.fromtimestamp(file_mtime).isoformat()
         
-        # Check if the markdown file is accessible
-        markdown_accessible = os.path.exists(MARKDOWN_FILE)
+        # Check if the markdown file is readable (not just that it exists)
+        try:
+            with open(MARKDOWN_FILE, 'r', encoding='utf-8') as f:
+                f.read(1)
+            markdown_accessible = True
+        except (FileNotFoundError, PermissionError, OSError):
+            markdown_accessible = False
         
         return jsonify({
             'status': 'ok',
