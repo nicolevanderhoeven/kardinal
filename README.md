@@ -411,13 +411,36 @@ The Docker provider is disabled in the Traefik configuration due to Docker API v
 
 ### Docker Deployment
 
-The Docker container mounts the Markdown file directory as a read-only volume. Ensure the file is readable:
+The container runs as `appuser` (UID 1000), a non-root user. The Markdown file must be readable by UID 1000.
+
+#### If using Syncthing to sync the Markdown file (required setup)
+
+Syncthing sets files to `0600` (owner-only) by default, which blocks the container from reading them. You **must** enable "Ignore Permissions" on the Syncthing folder so it doesn't override file permissions after writing:
+
+1. Open the Syncthing web UI
+2. Click the folder → **Edit** → **Advanced** tab
+3. Enable **Ignore Permissions**
+4. Save
+
+Then set a default ACL on the directory so that UID 1000 can read any file synced into it:
 
 ```bash
-sudo chmod 644 "/srv/kardinal/kardinal_public/Grafana Labs Kanban.md"
+# Apply to the current file
+setfacl -m u:1000:r "/srv/kardinal/kardinal_public/Grafana Labs Kanban.md"
+
+# Apply to all future files created in this directory
+setfacl -d -m u:1000:r /srv/kardinal/kardinal_public/
 ```
 
-The container runs as a non-root user, so ensure the file has appropriate permissions for group/other read access.
+Without "Ignore Permissions" enabled, Syncthing will call `chmod(0600)` after every sync, setting the ACL mask to `---` and blocking read access even when a named ACL entry is present.
+
+#### Without Syncthing
+
+Simply ensure the file is world-readable:
+
+```bash
+chmod 644 "/srv/kardinal/kardinal_public/Grafana Labs Kanban.md"
+```
 
 ### Manual Installation
 
@@ -428,14 +451,16 @@ sudo chmod 644 "/srv/kardinal/kardinal_public/Grafana Labs Kanban.md"
 sudo chown www-data:www-data "/srv/kardinal/kardinal_public/Grafana Labs Kanban.md"
 ```
 
-Or if the file is in a Syncthing directory, ensure the service user can read it.
-
 ## Troubleshooting
 
 - **File not found**: 
   - Docker: Check that the volume mount path is correct and the file exists on the host
   - Manual: Check that the Markdown file path is correct and the application user has read permissions
-- **No columns displayed**: Verify the Markdown file uses `##` for column headers and `- [ ]` for cards
+- **No columns displayed**:
+  - Verify the Markdown file uses `##` for column headers and `- [ ]` for cards
+  - Check that the file is actually readable by the container: `docker exec kardinal python3 -c "open('/srv/kardinal/kardinal_public/Grafana Labs Kanban.md')" && echo ok || echo PERMISSION DENIED`
+  - If using Syncthing, ensure "Ignore Permissions" is enabled on the folder (see File Permissions section). Without it, Syncthing sets `chmod(0600)` after every sync, which zeroes the ACL mask and blocks container access even when ACL entries are present
+  - Check the `/health` endpoint — `markdown_accessible: false` confirms a read permission problem
 - **Traefik not routing**: 
   - Check that the file-based config exists: `cat /srv/traefik/dynamic/kardinal.yml`
   - Verify the kardinal container is on the traefik network: `docker network inspect traefik | grep kardinal`
