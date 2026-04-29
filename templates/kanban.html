@@ -16,8 +16,7 @@
         <div class="kanban-board">
             {% if columns %}
                 <div class="kanban-row">
-                    {% for column in columns %}
-                        {% if column.name.lower() != 'done' %}
+                    {% for column in columns if not column.is_bottom %}
                         <div class="kanban-column">
                             <h2 class="column-header">{{ column.name }}</h2>
                             <div class="column-content">
@@ -32,11 +31,9 @@
                                 {% endif %}
                             </div>
                         </div>
-                        {% endif %}
                     {% endfor %}
                 </div>
-                {% for column in columns %}
-                    {% if column.name.lower() == 'done' %}
+                {% for column in columns if column.is_bottom %}
                     <div class="kanban-column done-column collapsed">
                         <h2 class="column-header done-header" onclick="toggleDoneColumn()">
                             <span>{{ column.name }}</span>
@@ -54,7 +51,6 @@
                             {% endif %}
                         </div>
                     </div>
-                    {% endif %}
                 {% endfor %}
             {% else %}
                 <div class="error-message">

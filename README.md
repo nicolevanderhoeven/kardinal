@@ -23,12 +23,19 @@ The application expects Markdown files in Obsidian Kanban format:
 ## In Progress
 - [ ] Task 3
 
-## Done
+## ✅ Shipped
 - [x] Completed task
 ```
 
 - **Columns**: Headers starting with `##` (e.g., `## Backlog`)
 - **Cards**: Task items using `- [ ]` (incomplete) or `- [x]` (completed)
+
+### Column Layout
+
+- All columns except the last are rendered side-by-side in the top row.
+- The **last column** is rendered as a collapsible "completed work" row below the others, regardless of its name. This matches the Obsidian Kanban convention of placing finished work in the rightmost column. You can rename it freely (e.g., `Done`, `✅ Shipped`, `Released`) without changing any code.
+- An `## Archive` column, if present, is excluded from the board entirely. Anything below it in the file is also ignored.
+- If the file contains only a single column, it renders normally in the top row instead of being collapsed.
 
 ## Docker Deployment (Recommended)
 

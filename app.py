@@ -273,8 +273,15 @@ def parse_kanban_markdown(file_path):
             })
         columns.append({
             'name': column_name,
-            'cards': rendered_cards
+            'cards': rendered_cards,
+            'is_bottom': False
         })
+
+    # Mark the last column as the bottom (collapsed) row, regardless of its name.
+    # Only do this when there are multiple columns - a single column should render
+    # normally in the top row instead of being collapsed at the bottom.
+    if len(columns) > 1:
+        columns[-1]['is_bottom'] = True
 
     return columns
 
