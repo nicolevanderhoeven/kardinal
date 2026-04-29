@@ -185,13 +185,19 @@ curl -o /srv/kardinal/update-kardinal.sh https://raw.githubusercontent.com/nicol
 chmod +x /srv/kardinal/update-kardinal.sh
 ```
 
-2. **Set up a cron job** (checks every 5 minutes):
+2. **Set up a cron job** (runs once a day at 02:00):
 ```bash
 # Edit crontab
 crontab -e
 
 # Add this line (adjust the path if needed):
-*/5 * * * * /srv/kardinal/update-kardinal.sh
+0 2 * * * /srv/kardinal/update-kardinal.sh
+```
+
+If you need to roll out a change sooner, run the script manually on the server:
+
+```bash
+/srv/kardinal/update-kardinal.sh
 ```
 
 3. **Check logs**:
@@ -222,7 +228,7 @@ A GitHub Actions workflow is already configured (`.github/workflows/docker-build
 3. **The workflow will:**
    - Build the Docker image
    - Push it to `nvanderhoeven/kardinal:latest` on Docker Hub
-   - Your server's cron job will automatically pick it up within 5 minutes
+   - Your server's cron job will automatically pick it up at the next scheduled run (02:00 daily by default; see "Automatic Updates with Cron" below). Run `update-kardinal.sh` manually on the server to roll out sooner.
 
 **Note:** The workflow uses GitHub Actions cache for faster builds and handles both pushes and pull requests appropriately.
 

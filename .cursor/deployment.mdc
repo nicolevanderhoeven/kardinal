@@ -6,7 +6,8 @@
 - When the user makes changes, remind them that they only need to:
   1. Commit and push to GitHub
   2. GitHub Actions will automatically build and push the Docker image
-  3. The server's cron job will automatically pull and restart within 5 minutes
+  3. The server's cron job will automatically pull and restart at the next scheduled run (02:00 daily by default)
+- For a faster rollout, the user can SSH into the server and run `/srv/kardinal/update-kardinal.sh` manually
 - No manual Docker build/push steps are needed unless testing locally
 - The workflow uses GitHub Actions cache and handles both pushes and PRs
 
