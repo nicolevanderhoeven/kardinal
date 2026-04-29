@@ -46,10 +46,15 @@ def find_note_path(note_name):
             'query': [note_name]
         }
         
+        # The Obsidian publish search API typically responds in 0.7-2.5s,
+        # so 0.5s caused every lookup to time out and wikilinks to render as
+        # italics instead of links. Lookups are batched and run in parallel via
+        # ThreadPoolExecutor, so a longer per-request timeout doesn't slow page
+        # loads in the common case.
         response = requests.post(
             'https://publish-01.obsidian.md/search',
             json=payload,
-            timeout=0.5  # Reduced timeout to 0.5 seconds for faster failure
+            timeout=3
         )
         
         if response.status_code != 200:

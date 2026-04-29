@@ -10,13 +10,15 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import requests
 
 # Make the project root importable when running `python -m unittest` from anywhere
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import app as app_module  # noqa: E402
-from app import app as flask_app, parse_kanban_markdown  # noqa: E402
+from app import app as flask_app, find_note_path, parse_kanban_markdown  # noqa: E402
 
 
 class ParseKanbanMarkdownTests(unittest.TestCase):
@@ -129,6 +131,99 @@ class KanbanRouteRenderingTests(unittest.TestCase):
         # (the JS function name "toggleDoneColumn" also contains the substring
         # "done-column" indirectly, so match the actual class attribute instead).
         self.assertEqual(html.count('kanban-column done-column'), 1)
+
+
+class FindNotePathTests(unittest.TestCase):
+    """Unit tests for the Obsidian search API lookup."""
+
+    def setUp(self):
+        # `find_note_path` is wrapped in `lru_cache`, so clear the cache before
+        # each test to ensure the mocked `requests.post` is actually invoked.
+        find_note_path.cache_clear()
+
+    def _mock_response(self, status_code: int, json_data):
+        response = MagicMock()
+        response.status_code = status_code
+        response.json.return_value = json_data
+        return response
+
+    def test_returns_path_when_note_exists(self):
+        # Search API returns multiple results; we expect the one whose filename
+        # matches exactly (case-insensitive) to win, with the .md stripped.
+        api_results = {
+            'results': [
+                'Changelog.md',
+                'system/cards/Some Other Note.md',
+                'Spice Runner.md',
+            ]
+        }
+        with patch(
+            'app.requests.post',
+            return_value=self._mock_response(200, api_results),
+        ) as mock_post:
+            result = find_note_path('Spice Runner')
+
+        self.assertEqual(result, 'Spice Runner')
+        # Sanity check: the call used a non-trivial timeout (>= 1s), so we don't
+        # regress to the 0.5s value that caused every lookup to time out.
+        _, kwargs = mock_post.call_args
+        self.assertGreaterEqual(kwargs.get('timeout', 0), 1)
+
+    def test_returns_path_for_note_in_subdirectory(self):
+        api_results = {
+            'results': [
+                'system/cards/Deep Note.md',
+                'Other.md',
+            ]
+        }
+        with patch(
+            'app.requests.post',
+            return_value=self._mock_response(200, api_results),
+        ):
+            result = find_note_path('Deep Note')
+
+        self.assertEqual(result, 'system/cards/Deep Note')
+
+    def test_match_is_case_insensitive(self):
+        api_results = {'results': ['Spice Runner.md']}
+        with patch(
+            'app.requests.post',
+            return_value=self._mock_response(200, api_results),
+        ):
+            self.assertEqual(find_note_path('spice runner'), 'Spice Runner')
+
+    def test_returns_none_when_no_match(self):
+        api_results = {'results': ['Something Else.md']}
+        with patch(
+            'app.requests.post',
+            return_value=self._mock_response(200, api_results),
+        ):
+            self.assertIsNone(find_note_path('Nonexistent Note'))
+
+    def test_returns_none_on_timeout(self):
+        # This is the regression we're guarding against: when the Obsidian
+        # search API takes longer than the configured timeout, `requests.post`
+        # raises `Timeout` and we should fall back to "note doesn't exist"
+        # rather than crashing.
+        with patch(
+            'app.requests.post',
+            side_effect=requests.exceptions.Timeout('mocked timeout'),
+        ):
+            self.assertIsNone(find_note_path('Spice Runner'))
+
+    def test_returns_none_on_non_200(self):
+        with patch(
+            'app.requests.post',
+            return_value=self._mock_response(500, {}),
+        ):
+            self.assertIsNone(find_note_path('Spice Runner'))
+
+    def test_returns_none_on_connection_error(self):
+        with patch(
+            'app.requests.post',
+            side_effect=requests.exceptions.ConnectionError('mocked'),
+        ):
+            self.assertIsNone(find_note_path('Spice Runner'))
 
 
 if __name__ == '__main__':
