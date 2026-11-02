@@ -11,6 +11,12 @@ services:
       - /srv/kardinal/kardinal_public:/srv/kardinal/kardinal_public:ro
     environment:
       - KANBAN_MARKDOWN_FILE=/srv/kardinal/kardinal_public/Grafana Labs Kanban.md
+      # Tracing is off by default (the image sets OTEL_TRACES_EXPORTER=none).
+      # To send traces to Alloy's OTLP/HTTP receiver on the Docker host (the
+      # gateway of the traefik network), uncomment these:
+      # - OTEL_TRACES_EXPORTER=otlp
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=http://172.19.0.1:4318
+      # - OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,host.name=kardinal
     networks:
       - traefik
 

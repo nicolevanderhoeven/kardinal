@@ -310,3 +310,57 @@ class SanitizationTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class OpenTelemetryStartupTests(unittest.TestCase):
+    """The app must start and serve requests under opentelemetry-instrument
+    with no OTLP endpoint configured (the default for local and CI runs)."""
+
+    def test_app_starts_under_opentelemetry_instrument_without_endpoint(self):
+        import shutil
+        import socket
+        import subprocess
+        import time
+        import urllib.request
+
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        bindir = os.path.dirname(sys.executable)
+        otel = shutil.which('opentelemetry-instrument', path=bindir)
+        gunicorn = shutil.which('gunicorn', path=bindir)
+        if not (otel and gunicorn):
+            self.skipTest('opentelemetry-instrument / gunicorn not installed')
+
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            port = s.getsockname()[1]
+
+        env = {k: v for k, v in os.environ.items() if not k.startswith('OTEL_')}
+        env.update({
+            'OTEL_SERVICE_NAME': 'kardinal',
+            'OTEL_TRACES_EXPORTER': 'none',
+            'OTEL_METRICS_EXPORTER': 'none',
+            'OTEL_LOGS_EXPORTER': 'none',
+            'KANBAN_MARKDOWN_FILE': os.path.join(root, 'does-not-exist.md'),
+        })
+        proc = subprocess.Popen(
+            [otel, gunicorn, '-w', '1', '-b', f'127.0.0.1:{port}', 'app:app'],
+            cwd=root, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            status = None
+            deadline = time.time() + 30
+            while time.time() < deadline and proc.poll() is None:
+                try:
+                    with urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=2) as r:
+                        status = r.status
+                        break
+                except Exception:
+                    time.sleep(0.3)
+            self.assertIsNone(proc.poll(), 'server exited during startup')
+            self.assertIsNotNone(status, 'server never answered')
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()

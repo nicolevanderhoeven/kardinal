@@ -176,6 +176,22 @@ Both `docker-compose.yml` (build on server) and `docker-compose.registry.yml` (u
 - Traefik routing is configured via file-based configuration (see "File-based Configuration" section above), not Docker labels.
 - After starting the kardinal container, make sure to set up the Traefik routing configuration file.
 
+### Tracing with OpenTelemetry (optional)
+
+The image runs gunicorn under `opentelemetry-instrument`, which auto-instruments Flask (one span per request) and `requests` (the Obsidian Publish lookup). Tracing is **off by default**: the image sets `OTEL_TRACES_EXPORTER=none` (and `none` for metrics and logs), so nothing is exported and no endpoint is contacted. Traces only; metrics and logs are not exported by the app.
+
+To send traces to an OTLP/HTTP receiver such as Grafana Alloy on the Docker host, set these in the kardinal service environment (they are included, commented out, in `docker-compose.registry.yml`):
+
+```
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=http://172.19.0.1:4318
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,host.name=kardinal
+```
+
+`OTEL_SERVICE_NAME=kardinal` and `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` are already the image defaults. `172.19.0.1` is the gateway of the `traefik` Docker network, where Alloy's OTLP receiver (port 4318) is reachable; check yours with `docker network inspect traefik`. Then recreate the container (`docker-compose -f docker-compose.registry.yml up -d`) and look for `{resource.service.name="kardinal"}` in Tempo.
+
+The OpenTelemetry SDK adds some memory per gunicorn worker (the image runs 2), so watch memory on small hosts.
+
 ### Automatic Updates with Cron
 
 A cron job automatically checks for and applies container updates. When combined with CI/CD (like GitHub Actions), you get fully automated deployments:
