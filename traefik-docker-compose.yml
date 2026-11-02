@@ -1,21 +1,19 @@
-version: '3.8'
-
 services:
   traefik:
-    image: traefik:latest
+    image: traefik:v3.6.2
     container_name: traefik
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"  # Dashboard (optional, remove if you don't want it exposed)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /srv/traefik/letsencrypt:/letsencrypt
       - /srv/traefik/dynamic:/etc/traefik/dynamic:ro
     command:
-      - --api.dashboard=true
-      - --api.insecure=true
+      # The Traefik API/dashboard is intentionally disabled: --api.insecure=true
+      # serves it unauthenticated on port 8080. To use it, publish 8080 only on
+      # 127.0.0.1 ("127.0.0.1:8080:8080") and re-add --api.insecure=true.
       # Docker provider disabled due to API version incompatibility
       # - --providers.docker=true
       # - --providers.docker.exposedbydefault=false

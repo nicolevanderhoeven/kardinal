@@ -37,6 +37,12 @@ The application expects Markdown files in Obsidian Kanban format:
 - An `## Archive` column, if present, is excluded from the board entirely. Anything below it in the file is also ignored.
 - If the file contains only a single column, it renders normally in the top row instead of being collapsed.
 
+### Wikilinks and Obsidian Publish
+
+Everything above `## Archive` is published as-is, so the board file must be the curated public copy.
+
+Each `[[Note Name]]` in a card is looked up on the public notes site (https://notes.nicolevanderhoeven.com) by sending the note name to Obsidian Publish's search endpoint (`https://publish-01.obsidian.md/search`, site id hardcoded in `app.py`). If a published note with that name exists, the wikilink becomes a link to it; otherwise it renders as italic text. This is the only call the app makes to a third party. Found and not-found answers are cached in memory for an hour; failed lookups (timeouts, errors) are logged as warnings and retried on the next request rather than cached.
+
 ## Docker Deployment (Recommended)
 
 The easiest way to deploy is using Docker and Docker Compose. You can either:
@@ -205,7 +211,7 @@ If you need to roll out a change sooner, run the script manually on the server:
 tail -f /var/log/kardinal-update.log
 ```
 
-This approach pulls the latest image and restarts the container if a new version is available. The script logs all activity to `/var/log/kardinal-update.log` for monitoring and troubleshooting.
+The script pulls the latest image first and only recreates the container when the image has actually changed, so a failed pull leaves the running container untouched and a run with nothing new causes no downtime. The script logs all activity to `/var/log/kardinal-update.log` for monitoring and troubleshooting.
 
 ### CI/CD Integration
 
@@ -247,11 +253,6 @@ docker run -d \
   -v /srv/kardinal/kardinal_public:/srv/kardinal/kardinal_public:ro \
   -e KANBAN_MARKDOWN_FILE="/srv/kardinal/kardinal_public/Grafana Labs Kanban.md" \
   --network traefik \
-  --label "traefik.enable=true" \
-  --label "traefik.http.routers.kanban.rule=Host(\`kardinal.nvdh.dev\`)" \
-  --label "traefik.http.routers.kanban.entrypoints=websecure" \
-  --label "traefik.http.routers.kanban.tls.certresolver=letsencrypt" \
-  --label "traefik.http.services.kanban.loadbalancer.server.port=5000" \
   kardinal
 ```
 
@@ -345,7 +346,7 @@ sudo systemctl status kardinal
 
 ### Setting Up Traefik
 
-If Traefik isn't running yet, you can use the provided `traefik-docker-compose.yml` as a reference:
+If Traefik isn't running yet, you can use the provided `traefik-docker-compose.yml` as a reference. It pins a Traefik version and does not publish the Traefik API/dashboard: `--api.insecure=true` on port 8080 would serve it unauthenticated to anyone who can reach the host.
 
 1. **Create Traefik directory and copy the compose file:**
 ```bash
@@ -416,9 +417,10 @@ docker logs traefik | grep -i kardinal
 
 ### Docker Provider (Not Currently Used)
 
-The Docker provider is disabled in the Traefik configuration due to Docker API version compatibility issues. The docker-compose files include Traefik labels for reference, but they won't be automatically detected. If you need to use Docker provider in the future, you'll need to:
+The Docker provider is disabled in the Traefik configuration due to Docker API version compatibility issues. The docker-compose files carry no Traefik labels, so routing only works through the file-based configuration. If you need to use Docker provider in the future, you'll need to:
 - Update Traefik to a version with compatible Docker client
 - Re-enable the Docker provider in `traefik-docker-compose.yml`
+- Add the `traefik.*` labels to the kardinal service in the docker-compose files
 
 ## File Permissions
 

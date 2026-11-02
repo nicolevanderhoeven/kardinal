@@ -17,3 +17,21 @@ env/
 .vscode/
 .idea/
 *.swp
+
+# Secrets and credentials - never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials*.json
+*-credentials.json
+service-account*.json
+acme.json
+.claude/settings.local.json
+
+# Board files - the app reads a real Obsidian board; keep local copies out of git
+kardinal_public/
+/board.md
+*Kanban*.md
