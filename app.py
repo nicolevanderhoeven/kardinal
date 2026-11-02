@@ -6,16 +6,18 @@ Reads an Obsidian Kanban-formatted Markdown file and renders it as a read-only K
 
 import os
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from html import escape
+from urllib.parse import quote_plus
+
+import bleach
+import markdown
+import requests
 from flask import Flask, render_template, jsonify
 from markupsafe import Markup
-import markdown
-import bleach
-import requests
-from urllib.parse import quote_plus
-from functools import lru_cache
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
-from datetime import datetime
 
 app = Flask(__name__)
 
@@ -26,57 +28,95 @@ MARKDOWN_FILE = os.getenv('KANBAN_MARKDOWN_FILE', '/srv/kardinal/kardinal_public
 note_lookup_executor = ThreadPoolExecutor(max_workers=10)
 
 
-@lru_cache(maxsize=1000)
+# Obsidian Publish site that wikilink names are looked up on.
+PUBLISH_SEARCH_URL = 'https://publish-01.obsidian.md/search'
+PUBLISH_SITE_ID = '186a0d1b800fa85e50d49cb464898e4c'
+
+# Only definitive answers from the search API (found / not found) are cached.
+# Failed lookups (timeouts, errors, non-200) are never cached, so a transient
+# Obsidian outage heals on the next request instead of lasting until restart.
+NOTE_CACHE_MAX = 1000
+NOTE_CACHE_TTL_SECONDS = 3600
+_note_cache = {}  # note_name -> (expires_at, path or None)
+_note_cache_lock = threading.Lock()
+
+
+def clear_note_cache():
+    """Drop all cached wikilink lookups."""
+    with _note_cache_lock:
+        _note_cache.clear()
+
+
 def find_note_path(note_name):
     """
     Find the path of a note on notes.nicolevanderhoeven.com using the search API.
     Returns the full path (without .md extension) if the note exists, None otherwise.
     Searches in all directories, not just system/cards/.
-    
-    Results are cached to avoid duplicate API calls for the same note.
+
+    Definitive results are cached for an hour. Failures also return None, but are
+    logged and not cached.
     """
+    now = time.monotonic()
+    with _note_cache_lock:
+        cached = _note_cache.get(note_name)
+        if cached and cached[0] > now:
+            return cached[1]
+
+    # The Obsidian publish search API typically responds in 0.7-2.5s, so a
+    # 0.5s timeout made every lookup fail. Lookups run in parallel via the
+    # thread pool, so a longer per-request timeout doesn't slow page loads in
+    # the common case.
     try:
-        import os
-        
-        # Use the Obsidian search API to find the note
-        # The search API returns file paths, and we check if any result
-        # matches the note name exactly (in any directory)
-        payload = {
-            'id': '186a0d1b800fa85e50d49cb464898e4c',
-            'query': [note_name]
-        }
-        
-        # The Obsidian publish search API typically responds in 0.7-2.5s,
-        # so 0.5s caused every lookup to time out and wikilinks to render as
-        # italics instead of links. Lookups are batched and run in parallel via
-        # ThreadPoolExecutor, so a longer per-request timeout doesn't slow page
-        # loads in the common case.
         response = requests.post(
-            'https://publish-01.obsidian.md/search',
-            json=payload,
+            PUBLISH_SEARCH_URL,
+            json={'id': PUBLISH_SITE_ID, 'query': [note_name]},
             timeout=3
         )
-        
         if response.status_code != 200:
+            app.logger.warning(
+                "Obsidian Publish lookup for %r returned HTTP %s",
+                note_name, response.status_code
+            )
             return None
-        
-        data = response.json()
-        results = data.get('results', [])
-        
-        # Check if any result matches the note name exactly (in any directory)
-        # Use case-insensitive comparison to handle variations in casing
-        for result in results:
-            # Extract filename without extension
-            filename = os.path.splitext(os.path.basename(result))[0]
-            if filename.lower() == note_name.lower():
-                # Return the full path without .md extension
-                # This will be used to construct the URL
-                return os.path.splitext(result)[0]
-        
+        results = response.json().get('results', [])
+    except Exception as e:
+        app.logger.warning("Obsidian Publish lookup for %r failed: %s", note_name, e)
         return None
-    except Exception:
-        # If request fails for any reason, assume note doesn't exist
-        return None
+
+    # Check if any result matches the note name exactly (in any directory),
+    # case-insensitively, and return its path without the .md extension.
+    note_path = None
+    for result in results:
+        filename = os.path.splitext(os.path.basename(result))[0]
+        if filename.lower() == note_name.lower():
+            note_path = os.path.splitext(result)[0]
+            break
+
+    with _note_cache_lock:
+        if len(_note_cache) >= NOTE_CACHE_MAX:
+            _note_cache.clear()
+        _note_cache[note_name] = (now + NOTE_CACHE_TTL_SECONDS, note_path)
+    return note_path
+
+
+WIKILINK_RE = re.compile(r'\[\[([^\]]+)\]\]')
+
+
+def resolve_wikilinks(note_names):
+    """Look up all unique note names in parallel. Returns {name: path or None}."""
+    future_to_note = {
+        note_lookup_executor.submit(find_note_path, note): note
+        for note in set(note_names)
+    }
+    note_paths = {}
+    for future in as_completed(future_to_note):
+        note_name = future_to_note[future]
+        try:
+            note_paths[note_name] = future.result()
+        except Exception as e:
+            app.logger.warning("Wikilink lookup for %r failed: %s", note_name, e)
+            note_paths[note_name] = None
+    return note_paths
 
 
 def render_card_markdown(text, note_cache=None):
@@ -87,40 +127,17 @@ def render_card_markdown(text, note_cache=None):
     
     Args:
         text: The markdown text to render
-        note_cache: Optional dict to cache note lookups (for batch processing)
+        note_cache: Optional dict of already-resolved {note name: path or None}
+            (for batch processing). Names missing from it are looked up here.
     """
     try:
-        # Find all wikilinks first
-        wikilinks = re.findall(r'\[\[([^\]]+)\]\]', text)
-        
-        # If we have a cache, use it; otherwise create a local one
         if note_cache is None:
             note_cache = {}
-        
-        # Batch lookup all unique wikilinks in parallel
-        unique_notes = list(set(wikilinks))
-        note_paths = {}
-        
-        # Submit all lookups to thread pool
-        future_to_note = {
-            note_lookup_executor.submit(find_note_path, note): note 
-            for note in unique_notes if note not in note_cache
-        }
-        
-        # Wait for all lookups to complete
-        for future in as_completed(future_to_note):
-            note_name = future_to_note[future]
-            try:
-                note_path = future.result()
-                note_paths[note_name] = note_path
-                if note_cache is not None:
-                    note_cache[note_name] = note_path
-            except Exception:
-                note_paths[note_name] = None
-        
-        # Merge with cache
-        note_paths.update({note: note_cache[note] for note in unique_notes if note in note_cache})
-        
+        missing = [n for n in WIKILINK_RE.findall(text) if n not in note_cache]
+        if missing:
+            note_cache.update(resolve_wikilinks(missing))
+        note_paths = note_cache
+
         # Parse Wikilinks [[text]] and replace with links or italic
         def process_wikilink(match):
             note_name = match.group(1)
@@ -141,7 +158,7 @@ def render_card_markdown(text, note_cache=None):
                 return f'*{note_name}*'
         
         # Replace [[text]] with either a Markdown link or italic text
-        text = re.sub(r'\[\[([^\]]+)\]\]', process_wikilink, text)
+        text = WIKILINK_RE.sub(process_wikilink, text)
         
         # Convert markdown to HTML
         html = markdown.markdown(
@@ -188,7 +205,6 @@ def render_card_markdown(text, note_cache=None):
         # Log error and fall back to plain text
         app.logger.error(f"Error rendering markdown: {e}")
         # Escape HTML to prevent XSS, but return as plain text
-        from html import escape
         return Markup(escape(text))
 
 
@@ -211,7 +227,6 @@ def parse_kanban_markdown(file_path):
     columns_data = {}  # column_name -> list of cards
     lines = content.split('\n')
     current_column = None
-    stopped_at_archive = False
     
     for line in lines:
         # Check for column header (## Header)
@@ -220,7 +235,6 @@ def parse_kanban_markdown(file_path):
             # Stop parsing if we encounter Archive column
             column_name = column_match.group(1)
             if column_name.strip().lower() == 'archive':
-                stopped_at_archive = True
                 break
             current_column = column_name
             if current_column not in columns_data:
@@ -244,27 +258,9 @@ def parse_kanban_markdown(file_path):
     all_wikilinks = set()
     for column_cards in columns_data.values():
         for card in column_cards:
-            wikilinks = re.findall(r'\[\[([^\]]+)\]\]', card['text'])
-            all_wikilinks.update(wikilinks)
-    
-    # Resolve all unique wikilinks in parallel (this is the key optimization)
-    note_cache = {}
-    if all_wikilinks:
-        unique_notes = list(all_wikilinks)
-        future_to_note = {
-            note_lookup_executor.submit(find_note_path, note): note 
-            for note in unique_notes
-        }
-        
-        # Wait for all lookups to complete
-        for future in as_completed(future_to_note):
-            note_name = future_to_note[future]
-            try:
-                note_path = future.result()
-                note_cache[note_name] = note_path
-            except Exception:
-                note_cache[note_name] = None
-    
+            all_wikilinks.update(WIKILINK_RE.findall(card['text']))
+    note_cache = resolve_wikilinks(all_wikilinks) if all_wikilinks else {}
+
     # Third pass: render all cards with pre-resolved wikilinks and build columns
     columns = []
     for column_name, cards in columns_data.items():
@@ -301,7 +297,7 @@ def kanban_board():
 @app.route('/health')
 def health():
     """
-    Health check endpoint that returns deployment status and version info.
+    Health check endpoint that returns deployment status.
     Useful for verifying that new deployments have been applied.
     """
     try:
@@ -321,9 +317,7 @@ def health():
         return jsonify({
             'status': 'ok',
             'deployed_at': deployed_at,
-            'markdown_file': MARKDOWN_FILE,
-            'markdown_accessible': markdown_accessible,
-            'version': '1.0.0'  # Update this when you make significant changes
+            'markdown_accessible': markdown_accessible
         })
     except Exception as e:
         return jsonify({

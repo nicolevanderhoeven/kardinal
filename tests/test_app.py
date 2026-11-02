@@ -18,7 +18,7 @@ import requests
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import app as app_module  # noqa: E402
-from app import app as flask_app, find_note_path, parse_kanban_markdown  # noqa: E402
+from app import app as flask_app, clear_note_cache, find_note_path, parse_kanban_markdown  # noqa: E402
 
 
 class ParseKanbanMarkdownTests(unittest.TestCase):
@@ -132,14 +132,23 @@ class KanbanRouteRenderingTests(unittest.TestCase):
         # "done-column" indirectly, so match the actual class attribute instead).
         self.assertEqual(html.count('kanban-column done-column'), 1)
 
+    def test_rendered_html_has_balanced_divs(self):
+        fake_columns = [
+            {'name': 'Backlog', 'cards': [{'text': 'a', 'html': 'a', 'completed': False}], 'is_bottom': False},
+            {'name': 'Shipped', 'cards': [], 'is_bottom': True},
+        ]
+        with patch.object(app_module, 'parse_kanban_markdown', return_value=fake_columns):
+            html = self.client.get('/').data.decode('utf-8')
+        self.assertEqual(html.count('<div'), html.count('</div>'))
+
 
 class FindNotePathTests(unittest.TestCase):
     """Unit tests for the Obsidian search API lookup."""
 
     def setUp(self):
-        # `find_note_path` is wrapped in `lru_cache`, so clear the cache before
-        # each test to ensure the mocked `requests.post` is actually invoked.
-        find_note_path.cache_clear()
+        # Lookups are cached, so clear the cache before each test to ensure the
+        # mocked `requests.post` is actually invoked.
+        clear_note_cache()
 
     def _mock_response(self, status_code: int, json_data):
         response = MagicMock()
@@ -224,6 +233,79 @@ class FindNotePathTests(unittest.TestCase):
             side_effect=requests.exceptions.ConnectionError('mocked'),
         ):
             self.assertIsNone(find_note_path('Spice Runner'))
+
+    def test_failures_are_not_cached_and_are_logged(self):
+        # A transient outage must not turn a link into italics until restart:
+        # the failed lookup is logged, and the next call retries and succeeds.
+        ok = self._mock_response(200, {'results': ['Spice Runner.md']})
+        with patch(
+            'app.requests.post',
+            side_effect=[requests.exceptions.Timeout('mocked'), ok],
+        ) as mock_post:
+            with self.assertLogs(flask_app.logger, level='WARNING') as logs:
+                self.assertIsNone(find_note_path('Spice Runner'))
+            self.assertIn('Spice Runner', logs.output[0])
+            self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
+        self.assertEqual(mock_post.call_count, 2)
+
+    def test_non_200_is_not_cached(self):
+        ok = self._mock_response(200, {'results': ['Spice Runner.md']})
+        with patch(
+            'app.requests.post',
+            side_effect=[self._mock_response(503, {}), ok],
+        ):
+            with self.assertLogs(flask_app.logger, level='WARNING'):
+                self.assertIsNone(find_note_path('Spice Runner'))
+            self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
+
+    def test_definitive_results_are_cached(self):
+        found = self._mock_response(200, {'results': ['Spice Runner.md']})
+        missing = self._mock_response(200, {'results': []})
+        with patch('app.requests.post', side_effect=[found, missing]) as mock_post:
+            self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
+            self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
+            self.assertIsNone(find_note_path('Nope'))
+            self.assertIsNone(find_note_path('Nope'))
+        self.assertEqual(mock_post.call_count, 2)
+
+
+class HealthTests(unittest.TestCase):
+    def setUp(self):
+        flask_app.config['TESTING'] = True
+        self.client = flask_app.test_client()
+
+    def test_health_does_not_leak_server_path(self):
+        with tempfile.NamedTemporaryFile('w', suffix='.md') as f:
+            f.write('## A\n')
+            f.flush()
+            with patch.object(app_module, 'MARKDOWN_FILE', f.name):
+                response = self.client.get('/health')
+            data = response.get_json()
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(data['status'], 'ok')
+            self.assertTrue(data['markdown_accessible'])
+            self.assertNotIn('markdown_file', data)
+            self.assertNotIn(f.name, response.get_data(as_text=True))
+
+    def test_health_reports_unreadable_file(self):
+        with patch.object(app_module, 'MARKDOWN_FILE', '/nonexistent/file.md'):
+            data = self.client.get('/health').get_json()
+        self.assertFalse(data['markdown_accessible'])
+
+
+class SanitizationTests(unittest.TestCase):
+    def test_script_and_js_links_are_stripped(self):
+        html = str(app_module.render_card_markdown(
+            'hi <script>alert(1)</script> [x](javascript:alert(1)) '
+            '<img src=x onerror=alert(1)>', note_cache={}))
+        self.assertNotIn('<script', html)
+        self.assertNotIn('javascript:', html)
+        self.assertNotIn('<img', html)
+
+    def test_external_links_get_noopener(self):
+        html = str(app_module.render_card_markdown('[x](https://example.com)', note_cache={}))
+        self.assertIn('rel="noopener noreferrer"', html)
+        self.assertIn('target="_blank"', html)
 
 
 if __name__ == '__main__':

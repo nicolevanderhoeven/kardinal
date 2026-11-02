@@ -17,15 +17,13 @@
 - Returns JSON with:
   - `status`: "ok" if healthy
   - `deployed_at`: timestamp when the container was deployed (useful for verifying updates)
-  - `markdown_file`: path to the markdown file
-  - `markdown_accessible`: whether the file exists
-  - `version`: current version string
+  - `markdown_accessible`: whether the markdown file can be read (not just that it exists)
 - Use this endpoint to verify deployments without logging into the server
 
 ## Performance
 
 - Wikilink lookups are optimized with:
-  - LRU caching (1000 entries)
+  - In-memory caching of definitive lookup results (1000 entries, 1 hour; failed lookups are logged and not cached)
   - Parallel processing via ThreadPoolExecutor
   - Shared request cache per page render
 - Page load time should be ~1-2 seconds instead of ~15 seconds

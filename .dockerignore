@@ -21,9 +21,6 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 
-# Traefik config (not needed in container)
-traefik-config.yml
-
 # IDE
 .vscode/
 .idea/
