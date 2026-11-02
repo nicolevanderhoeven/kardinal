@@ -38,7 +38,7 @@ cd "$(dirname "$COMPOSE_FILE")" || {
 }
 
 # Image the compose file runs, and the image ID the container is running now
-IMAGE="$($COMPOSE_CMD config --images 2>/dev/null | head -n 1)"
+IMAGE="$(sed -n 's/^[[:space:]]*image:[[:space:]]*//p' "$(basename "$COMPOSE_FILE")" | head -n 1 | tr -d "\"'" | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')"
 if [ -z "$IMAGE" ]; then
     log "ERROR: Could not determine the image from $COMPOSE_FILE"
     exit 1
