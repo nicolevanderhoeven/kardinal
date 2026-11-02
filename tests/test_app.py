@@ -308,10 +308,6 @@ class SanitizationTests(unittest.TestCase):
         self.assertIn('target="_blank"', html)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class OpenTelemetryStartupTests(unittest.TestCase):
     """The app must start and serve requests under opentelemetry-instrument
     with no OTLP endpoint configured (the default for local and CI runs)."""
@@ -364,3 +360,7 @@ class OpenTelemetryStartupTests(unittest.TestCase):
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 proc.kill()
+
+
+if __name__ == '__main__':
+    unittest.main()
