@@ -8,7 +8,7 @@
 #
 # (tests/test_repo_config.py fails if the two files disagree.)
 Flask==3.1.3
-markdown==3.11.2
+markdown==3.11.3
 bleach==6.4.0
 requests==2.34.2
 gunicorn==26.2.0
