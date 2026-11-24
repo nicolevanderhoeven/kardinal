@@ -2,11 +2,15 @@
 # Auto-update script for Kardinal container
 # Pulls the latest image first and only recreates the container when the image
 # has actually changed. A failed pull leaves the running container untouched.
+# Follows whatever tag the compose file names (nvanderhoeven/kardinal:latest by
+# default). To deploy an exact, verified image instead, use
+# update-kardinal-pinned.sh.
 # Usage: Run via cron or manually
 
-COMPOSE_FILE="/srv/kardinal/docker-compose.registry.yml"
-LOG_FILE="/var/log/kardinal-update.log"
-CONTAINER_NAME="kardinal"
+# The paths can be overridden from the environment (used by the tests).
+COMPOSE_FILE="${COMPOSE_FILE:-/srv/kardinal/docker-compose.registry.yml}"
+LOG_FILE="${LOG_FILE:-/var/log/kardinal-update.log}"
+CONTAINER_NAME="${CONTAINER_NAME:-kardinal}"
 
 # Prefer the standalone docker-compose binary (what the server uses today),
 # fall back to the Compose v2 plugin.
@@ -37,8 +41,9 @@ cd "$(dirname "$COMPOSE_FILE")" || {
     exit 1
 }
 
-# Image the compose file runs, and the image ID the container is running now
-IMAGE="$(sed -n 's/^[[:space:]]*image:[[:space:]]*//p' "$(basename "$COMPOSE_FILE")" | head -n 1 | tr -d "\"'" | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')"
+# Image the compose file runs (after variable substitution), and the image ID
+# the container is running now
+IMAGE="$($COMPOSE_CMD config 2>/dev/null | sed -n 's/^[[:space:]]*image:[[:space:]]*//p' | head -n 1 | tr -d "\"'" | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')"
 if [ -z "$IMAGE" ]; then
     log "ERROR: Could not determine the image from $COMPOSE_FILE"
     exit 1
@@ -57,6 +62,9 @@ if [ -z "$NEW_ID" ]; then
     log "ERROR: Pulled image $IMAGE not found locally; leaving the running container untouched"
     exit 1
 fi
+
+NEW_DIGEST="$(docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' "$IMAGE" 2>/dev/null || true)"
+log "Pulled ${NEW_DIGEST:-$IMAGE (no registry digest)}; image ID ${NEW_ID:0:19}"
 
 CONTAINER_RUNNING="$(docker inspect --format '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)"
 if [ "$RUNNING_ID" = "$NEW_ID" ] && [ "$CONTAINER_RUNNING" = "true" ]; then

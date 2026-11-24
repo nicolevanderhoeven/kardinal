@@ -1,3 +1,12 @@
+# Human-edited input: direct dependencies, pinned exactly.
+# The Docker image and CI install from requirements.lock (all transitive
+# dependencies, with hashes). After changing this file, regenerate it:
+#
+#   python3.12 -m venv /tmp/lockenv && /tmp/lockenv/bin/pip install pip-tools
+#   /tmp/lockenv/bin/pip-compile --generate-hashes --allow-unsafe --strip-extras \
+#       --output-file requirements.lock requirements.txt
+#
+# (tests/test_repo_config.py fails if the two files disagree.)
 Flask==3.1.3
 markdown==3.11.2
 bleach==6.4.0

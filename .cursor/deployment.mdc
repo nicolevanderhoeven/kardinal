@@ -14,16 +14,15 @@
 ## Health Endpoint
 
 - A `/health` endpoint exists at `https://kardinal.nvdh.dev/health`
-- Returns JSON with:
-  - `status`: "ok" if healthy
+- Through the proxy it returns only `{"status": "ok"}`
+- From inside the container (the Docker healthcheck, `docker exec kardinal python -c ...` against `http://127.0.0.1:5000/health`) it also returns:
   - `deployed_at`: timestamp when the container was deployed (useful for verifying updates)
   - `markdown_accessible`: whether the markdown file can be read (not just that it exists)
-- Use this endpoint to verify deployments without logging into the server
 
 ## Performance
 
-- Wikilink lookups are optimized with:
-  - In-memory caching of definitive lookup results (1000 entries, 1 hour; failed lookups are logged and not cached)
-  - Parallel processing via ThreadPoolExecutor
-  - Shared request cache per page render
-- Page load time should be ~1-2 seconds instead of ~15 seconds
+- Wikilink lookups and page renders are cached and bounded:
+  - Rendered board cached per worker for 60 s, served stale while one background thread refreshes (`KARDINAL_PAGE_CACHE_TTL`)
+  - In-memory caching of definitive lookup results (1000 entries, 1 hour); failed lookups are cached for 60 s
+  - Parallel lookups through a pool of 8, with a 4 s total budget per render
+- A page view costs at most one lookup per unique wikilink per minute, instead of 25-40 on every request

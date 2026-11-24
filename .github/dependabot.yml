@@ -1,0 +1,20 @@
+# Weekly update PRs. Nothing is merged automatically; each PR runs the tests
+# and a (non-pushing) image build first.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # requirements.lock is generated from requirements.txt (see its header), so
+    # a bump here needs `pip-compile` re-run; tests/test_repo_config.py fails
+    # until the lock matches.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

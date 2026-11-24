@@ -35,7 +35,7 @@
                 </div>
                 {% for column in columns if column.is_bottom %}
                     <div class="kanban-column done-column collapsed">
-                        <h2 class="column-header done-header" onclick="toggleDoneColumn()">
+                        <h2 class="column-header done-header">
                             <span>{{ column.name }}</span>
                             <span class="toggle-icon">▼</span>
                         </h2>
@@ -60,21 +60,7 @@
             {% endif %}
         </div>
     </div>
-    <script>
-        function toggleDoneColumn() {
-            const doneColumn = document.querySelector('.done-column');
-            const doneContent = document.querySelector('.done-content');
-            const toggleIcon = document.querySelector('.toggle-icon');
-            
-            if (doneColumn.classList.contains('collapsed')) {
-                doneColumn.classList.remove('collapsed');
-                toggleIcon.textContent = '▲';
-            } else {
-                doneColumn.classList.add('collapsed');
-                toggleIcon.textContent = '▼';
-            }
-        }
-    </script>
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>
 
