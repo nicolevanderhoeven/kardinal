@@ -9,6 +9,7 @@ without code changes.
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -18,7 +19,13 @@ import requests
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import app as app_module  # noqa: E402
-from app import app as flask_app, clear_note_cache, find_note_path, parse_kanban_markdown  # noqa: E402
+from app import (  # noqa: E402
+    app as flask_app,
+    clear_board_cache,
+    clear_note_cache,
+    find_note_path,
+    parse_kanban_markdown,
+)
 
 
 class ParseKanbanMarkdownTests(unittest.TestCase):
@@ -90,6 +97,9 @@ class KanbanRouteRenderingTests(unittest.TestCase):
     def setUp(self):
         flask_app.config['TESTING'] = True
         self.client = flask_app.test_client()
+        # Rendered boards are cached per file path; don't leak between tests.
+        clear_board_cache()
+        self.addCleanup(clear_board_cache)
 
     def test_bottom_column_rendered_after_top_row(self):
         fake_columns = [
@@ -127,9 +137,8 @@ class KanbanRouteRenderingTests(unittest.TestCase):
         backlog_idx = html.index('Backlog')
         released_idx = html.index('Released')
         self.assertLess(backlog_idx, released_idx)
-        # The done-column container must be rendered exactly once
-        # (the JS function name "toggleDoneColumn" also contains the substring
-        # "done-column" indirectly, so match the actual class attribute instead).
+        # The done-column container must be rendered exactly once (match the
+        # actual class attribute).
         self.assertEqual(html.count('kanban-column done-column'), 1)
 
     def test_rendered_html_has_balanced_divs(self):
@@ -234,9 +243,9 @@ class FindNotePathTests(unittest.TestCase):
         ):
             self.assertIsNone(find_note_path('Spice Runner'))
 
-    def test_failures_are_not_cached_and_are_logged(self):
-        # A transient outage must not turn a link into italics until restart:
-        # the failed lookup is logged, and the next call retries and succeeds.
+    def test_failures_are_logged_and_retried_after_the_failure_ttl(self):
+        # A transient outage must heal: the failed lookup is logged, kept only
+        # for NOTE_FAILURE_TTL_SECONDS, and then retried and succeeds.
         ok = self._mock_response(200, {'results': ['Spice Runner.md']})
         with patch(
             'app.requests.post',
@@ -245,18 +254,27 @@ class FindNotePathTests(unittest.TestCase):
             with self.assertLogs(flask_app.logger, level='WARNING') as logs:
                 self.assertIsNone(find_note_path('Spice Runner'))
             self.assertIn('Spice Runner', logs.output[0])
-            self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
+            later = time.monotonic() + app_module.NOTE_FAILURE_TTL_SECONDS + 1
+            with patch.object(app_module, '_now', return_value=later):
+                self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
         self.assertEqual(mock_post.call_count, 2)
 
-    def test_non_200_is_not_cached(self):
+    def test_non_200_is_only_cached_briefly(self):
         ok = self._mock_response(200, {'results': ['Spice Runner.md']})
         with patch(
             'app.requests.post',
             side_effect=[self._mock_response(503, {}), ok],
-        ):
+        ) as mock_post:
             with self.assertLogs(flask_app.logger, level='WARNING'):
                 self.assertIsNone(find_note_path('Spice Runner'))
-            self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
+            # Inside the failure TTL the failure is served from cache...
+            self.assertIsNone(find_note_path('Spice Runner'))
+            self.assertEqual(mock_post.call_count, 1)
+            # ...and once it expires the lookup is retried and heals.
+            with patch.object(app_module, '_now',
+                              return_value=time.monotonic() + app_module.NOTE_FAILURE_TTL_SECONDS + 1):
+                self.assertEqual(find_note_path('Spice Runner'), 'Spice Runner')
+            self.assertEqual(mock_post.call_count, 2)
 
     def test_definitive_results_are_cached(self):
         found = self._mock_response(200, {'results': ['Spice Runner.md']})
@@ -286,6 +304,12 @@ class HealthTests(unittest.TestCase):
             self.assertTrue(data['markdown_accessible'])
             self.assertNotIn('markdown_file', data)
             self.assertNotIn(f.name, response.get_data(as_text=True))
+
+    def test_health_hides_details_from_proxied_requests(self):
+        # Requests relayed by the reverse proxy come from another address.
+        response = self.client.get('/health', environ_base={'REMOTE_ADDR': '172.19.0.2'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'status': 'ok'})
 
     def test_health_reports_unreadable_file(self):
         with patch.object(app_module, 'MARKDOWN_FILE', '/nonexistent/file.md'):

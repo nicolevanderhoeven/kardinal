@@ -1,19 +1,74 @@
-# Traefik dynamic configuration for kardinal
-# Place this file in /srv/traefik/dynamic/kardinal.yml
+# Traefik dynamic configuration for kardinal.
+# Reference copy: the owner copies this to /srv/traefik/dynamic/kardinal.yml on
+# the server (keep a backup of the old file first). Traefik's file provider
+# watches the directory, so no restart is needed.
+#
+# The same security headers are also set by the app itself (see app.py), so
+# this file is the second layer, and the place to tune HSTS. The app sends the
+# Content-Security-Policy; it is not repeated here so the two cannot disagree.
 
 http:
   routers:
     kardinal:
+      # To also keep /health off the internet:
+      #   rule: "Host(`kardinal.nvdh.dev`) && !Path(`/health`)"
       rule: "Host(`kardinal.nvdh.dev`)"
       entryPoints:
         - websecure
       service: kardinal
+      middlewares:
+        - kardinal-headers
+        - kardinal-ratelimit
+        - kardinal-inflight
       tls:
         certResolver: letsencrypt
-  
+
+  middlewares:
+    kardinal-headers:
+      headers:
+        # Roll HSTS out short, then raise it (31536000 = 1 year) after a day of
+        # clean HTTPS. No includeSubdomains / preload: nvdh.dev hosts other things.
+        stsSeconds: 300
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        customResponseHeaders:
+          Server: ""                              # drop the server banner
+          Cross-Origin-Opener-Policy: "same-origin"
+    # Per client IP. The monitoring probes make 1 request per 5 minutes each, so
+    # this is far above any legitimate use.
+    kardinal-ratelimit:
+      rateLimit:
+        average: 10
+        period: 1s
+        burst: 30
+    # Never more than 10 requests in flight at once for this site.
+    kardinal-inflight:
+      inFlightReq:
+        amount: 10
+
   services:
     kardinal:
       loadBalancer:
         servers:
           - url: "http://kardinal:5000"
 
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      # Refuse TLS handshakes for the bare IP or names with no certificate.
+      # After enabling, confirm that certificate issuance and renewal (TLS-ALPN
+      # challenge) still work: `docker logs traefik | grep -i acme`. If renewal
+      # fails, remove this line.
+      sniStrict: true
+      # TLS 1.2 only (TLS 1.3 suites are not configurable); drops the
+      # CBC/SHA-1 suite.
+      cipherSuites:
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256

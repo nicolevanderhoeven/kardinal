@@ -41,7 +41,18 @@ The application expects Markdown files in Obsidian Kanban format:
 
 Everything above `## Archive` is published as-is, so the board file must be the curated public copy.
 
-Each `[[Note Name]]` in a card is looked up on the public notes site (https://notes.nicolevanderhoeven.com) by sending the note name to Obsidian Publish's search endpoint (`https://publish-01.obsidian.md/search`, site id hardcoded in `app.py`). If a published note with that name exists, the wikilink becomes a link to it; otherwise it renders as italic text. This is the only call the app makes to a third party. Found and not-found answers are cached in memory for an hour; failed lookups (timeouts, errors) are logged as warnings and retried on the next request rather than cached.
+Each `[[Note Name]]` in a card is looked up on the public notes site (https://notes.nicolevanderhoeven.com) by sending the note name to Obsidian Publish's search endpoint (`https://publish-01.obsidian.md/search`, site id hardcoded in `app.py`). If a published note with that name exists, the wikilink becomes a link to it; otherwise it renders as italic text. This is the only call the app makes to a third party. Found and not-found answers are cached in memory for an hour; failed lookups (timeouts, errors) are logged as warnings and cached for only a minute, so a slow or down Obsidian costs one failed lookup per note per minute instead of one per page view, and heals quickly. If a note was found earlier and a refresh fails, the old link keeps being served.
+
+### Caching and request limits
+
+A page view must never cost 25-40 outbound lookups, so rendering is cached and bounded:
+
+- **Page cache (60 s).** The rendered board is cached per gunicorn worker process. Within 60 s, and while the board file is unchanged, requests are served from memory. After that the old copy is still served immediately while *one* background thread refreshes it (stale-while-revalidate), so readers never wait on Obsidian. If a refresh fails (an exception, or the board file suddenly unreadable) the old copy keeps being served for up to an hour and the refresh is retried every 15 s. Only the very first render after a start blocks, and concurrent first requests share that one render. Edits to the board file show up within about a minute. Set `KARDINAL_PAGE_CACHE_TTL=<seconds>` to change the 60 s, or `0` to turn the page cache off.
+- **Lookup limits.** At most 8 lookups are in flight per process, and one render spends at most 4 s on lookups in total. Names still unresolved at the deadline render as italics (like a note that does not exist) and are looked up again on the next refresh, so a page always answers well inside the 10 s monitoring timeout.
+
+### Security headers
+
+The app sends `Content-Security-Policy` (`default-src 'none'`, scripts and styles from the site only, no framing, no forms), `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` and `Cross-Origin-Opener-Policy` on every response, so the protection survives a replaced proxy config. The page has no inline script or style (the done-row toggle lives in `static/app.js`). HSTS starts at 300 s; set `KARDINAL_HSTS_MAX_AGE=31536000` (or raise `stsSeconds` in Traefik) after a day of clean HTTPS. `/health` returns only `{"status": "ok"}` to anyone reaching it through the proxy; the deploy time and file-readability details are only returned to requests from inside the container (the Docker healthcheck, `docker exec`).
 
 ## Docker Deployment (Recommended)
 
@@ -170,6 +181,11 @@ Both `docker-compose.yml` (build on server) and `docker-compose.registry.yml` (u
 - Environment variable for the file path
 - Automatic restarts
 - Network configuration for Traefik
+- Hardening: read-only root filesystem with a small `/tmp` tmpfs, all Linux capabilities dropped, `no-new-privileges`, a 160 MB memory limit (the container uses about 75 MB), a process limit, rotated container logs (3 x 10 MB) and a healthcheck against `/health`
+
+`docker-compose.registry.yml` takes its image from `KARDINAL_IMAGE` and defaults to `nvanderhoeven/kardinal:latest`; see "Pinned updates" below.
+
+The image itself is built on a base image pinned by digest, installs Python packages from the hash-locked `requirements.lock`, runs as a non-root user and has a `HEALTHCHECK`. Gunicorn runs 2 processes x 4 threads (`gunicorn.conf.py`) with a 30 s timeout and periodic worker recycling.
 
 **Note**: 
 - The docker-compose files are configured to use the `traefik` network. If the network doesn't exist, create it with: `docker network create traefik`.
@@ -229,6 +245,12 @@ tail -f /var/log/kardinal-update.log
 
 The script pulls the latest image first and only recreates the container when the image has actually changed, so a failed pull leaves the running container untouched and a run with nothing new causes no downtime. The script logs all activity to `/var/log/kardinal-update.log` for monitoring and troubleshooting.
 
+#### Pinned updates (optional, stricter)
+
+`update-kardinal.sh` trusts whatever `:latest` is at 02:00, so anyone who can push to `main` or publish to the Docker Hub repository runs code on the server within a day. `update-kardinal-pinned.sh` is an example that deploys an exact image instead: it reads `KARDINAL_IMAGE=nvanderhoeven/kardinal@sha256:<digest>` from `/srv/kardinal/kardinal.env`, pulls that digest, verifies it, recreates the container only if it is not already running, waits for the healthcheck, and rolls back to the last healthy image if the new one fails. A push does nothing on the server until the digest in `kardinal.env` is changed on purpose. Each GitHub Actions run prints the digest of the image it pushed in its job summary. Setup steps are in the header of the script. The two scripts are alternatives; use one cron entry.
+
+**These are reference files in the repository, not live configuration.** The owner copies `update-kardinal.sh` / `update-kardinal-pinned.sh`, `docker-compose.registry.yml`, `traefik-docker-compose.yml` and `kardinal-traefik-config.yml` to `/srv/kardinal/` and `/srv/traefik/` by hand. Only the image (and so `app.py`, the templates and the Dockerfile settings) updates by itself through the nightly pull.
+
 ### CI/CD Integration
 
 A GitHub Actions workflow is already configured (`.github/workflows/docker-build.yml`) that automatically builds and pushes the Docker image to Docker Hub on every push to the `main` branch.
@@ -253,6 +275,12 @@ A GitHub Actions workflow is already configured (`.github/workflows/docker-build
    - Your server's cron job will automatically pick it up at the next scheduled run (02:00 daily by default; see "Automatic Updates with Cron" below). Run `update-kardinal.sh` manually on the server to roll out sooner.
 
 **Note:** The workflow uses GitHub Actions cache for faster builds and handles both pushes and pull requests appropriately.
+
+Also in the pipeline:
+- Tests and the image install from `requirements.lock` with `--require-hashes`. `requirements.txt` stays the human-edited list of direct dependencies; after changing it, regenerate the lock with the `pip-compile` command in its header (`tests/test_repo_config.py` fails until they agree).
+- The build job only has `contents: read`, and the image is built with provenance and SBOM attestations.
+- A weekly scheduled run (Mondays 05:17 UTC) rebuilds the image so base-image and dependency fixes reach Docker Hub without a code change. Note that this produces a new image once a week, so the 02:00 cron recreates the container (about 30 s of 502s) that night.
+- `.github/dependabot.yml` opens weekly update PRs for pip, the Dockerfile base image (digest) and GitHub Actions. (Dependabot *security* updates and alerts are a separate switch in the repository's Code security settings.)
 
 ### Building the Image Manually
 
@@ -290,6 +318,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+To install exactly what the Docker image and CI use (all transitive dependencies, hash-verified), install from the lock file instead: `pip install --require-hashes -r requirements.lock`.
+
 ## Configuration
 
 The Markdown file path can be configured via environment variable:
@@ -319,8 +349,10 @@ pip install gunicorn
 
 Run with Gunicorn:
 ```bash
-gunicorn -w 2 -b 127.0.0.1:5000 app:app
+gunicorn -c gunicorn.conf.py -b 127.0.0.1:5000 app:app
 ```
+
+`gunicorn.conf.py` sets 2 workers x 4 threads, a 30 s timeout and worker recycling (the container uses it too).
 
 ### Systemd Service
 
@@ -337,7 +369,7 @@ User=www-data
 WorkingDirectory=/path/to/kardinal
 Environment="PATH=/path/to/kardinal/venv/bin"
 Environment="KANBAN_MARKDOWN_FILE=/srv/kardinal/kardinal_public/Grafana Labs Kanban.md"
-ExecStart=/path/to/kardinal/venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 app:app
+ExecStart=/path/to/kardinal/venv/bin/gunicorn -c gunicorn.conf.py -b 127.0.0.1:5000 app:app
 Restart=always
 
 [Install]
@@ -362,7 +394,7 @@ sudo systemctl status kardinal
 
 ### Setting Up Traefik
 
-If Traefik isn't running yet, you can use the provided `traefik-docker-compose.yml` as a reference. It pins a Traefik version and does not publish the Traefik API/dashboard: `--api.insecure=true` on port 8080 would serve it unauthenticated to anyone who can reach the host.
+If Traefik isn't running yet, you can use the provided `traefik-docker-compose.yml` as a reference. It pins a Traefik version (v3.7.20; the v3.6 line is end-of-life), does not mount the Docker socket (the Docker provider is off, and a socket mount would give anyone who breaks Traefik root on the host) and does not publish the Traefik API/dashboard: `--api.insecure=true` on port 8080 would serve it unauthenticated to anyone who can reach the host.
 
 1. **Create Traefik directory and copy the compose file:**
 ```bash
@@ -423,6 +455,8 @@ http:
         servers:
           - url: "http://kardinal:5000"
 ```
+
+The file in the repository (`kardinal-traefik-config.yml`) also contains the security middlewares and TLS options: HSTS, `nosniff`, framing and referrer headers, removal of the `Server` banner, a per-IP rate limit (10 requests/s, burst 30), a cap of 10 requests in flight, TLS 1.2+ only with an AEAD-only cipher list, and `sniStrict`. Read its comments first: HSTS starts at 300 s and should be raised after a day, and after enabling `sniStrict` you should check that certificate renewal still works. The app sends the Content-Security-Policy itself, so it is not repeated in Traefik. Upgrading Traefik and applying this file are changes the owner makes on the server; Traefik reloads the dynamic file by itself, while a new Traefik version needs `docker-compose pull && docker-compose up -d` in `/srv/traefik`.
 
 **Note:** This assumes the kardinal container is on the `traefik` network and accessible by its container name. If using a different network or setup, adjust the URL accordingly.
 
@@ -491,7 +525,7 @@ sudo chown www-data:www-data "/srv/kardinal/kardinal_public/Grafana Labs Kanban.
   - Verify the Markdown file uses `##` for column headers and `- [ ]` for cards
   - Check that the file is actually readable by the container: `docker exec kardinal python3 -c "open('/srv/kardinal/kardinal_public/Grafana Labs Kanban.md')" && echo ok || echo PERMISSION DENIED`
   - If using Syncthing, ensure "Ignore Permissions" is enabled on the folder (see File Permissions section). Without it, Syncthing sets `chmod(0600)` after every sync, which zeroes the ACL mask and blocks container access even when ACL entries are present
-  - Check the `/health` endpoint — `markdown_accessible: false` confirms a read permission problem
+  - Check `markdown_accessible` in the detailed health output (only answered inside the container): `docker exec kardinal python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:5000/health').read().decode())"`. `false` confirms a read permission problem
 - **Traefik not routing**: 
   - Check that the file-based config exists: `cat /srv/traefik/dynamic/kardinal.yml`
   - Verify the kardinal container is on the traefik network: `docker network inspect traefik | grep kardinal`
